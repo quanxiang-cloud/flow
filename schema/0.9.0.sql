@@ -1,0 +1,1 @@
+alter TABLE flow_instance_variables  modify column value text;

@@ -1,0 +1,79 @@
+name: flow
+env:
+  PROJECT_NAME: flow
+  IMAGE_PREFIX: qxcr.xyz/lowcode
+  DATE: $(date "+%Y%m%d")
+on: [ push, pull_request ]
+jobs:
+  lint:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v2
+      - run: golint -set_exit_status $(go list ./... | grep -v /vendor/)
+#  test:
+#    runs-on: self-hosted
+#    steps:
+#      - run: go test ./...
+#      - run: go test -cover ./...
+  build_alpha:
+    runs-on: self-hosted
+    needs: [ lint ]
+    if: github.ref == 'refs/heads/alpha'
+    steps:
+      - run: go mod tidy
+      - run: go mod vendor
+      - run: echo IMAGE_TAG="v${{ env.DATE }}-${GITHUB_SHA::7}" >> $GITHUB_ENV
+      - run: docker build -t ${{ env.IMAGE_PREFIX }}/${{ env.PROJECT_NAME }}:$IMAGE_TAG .
+      - run: docker push ${{ env.IMAGE_PREFIX }}/${{ env.PROJECT_NAME }}:$IMAGE_TAG
+      - run: docker rmi ${{ env.IMAGE_PREFIX }}/${{ env.PROJECT_NAME }}:$IMAGE_TAG
+        
+  deploy_alpha:
+    runs-on: self-hosted
+    needs: [ lint,build_alpha ]
+    if: startsWith(github.ref, 'refs/heads/alpha')
+    steps:
+      - run: echo IMAGE_TAG="v${{ env.DATE }}-${GITHUB_SHA::7}" >> $GITHUB_ENV
+      - run: helm upgrade ${{ env.PROJECT_NAME }} /root/quanxiang_charts_alpha/${{ env.PROJECT_NAME }} --kubeconfig ~/.kube/config_alpha --set image.tag=$IMAGE_TAG --set image.repo=${{env.IMAGE_PREFIX}} -n lowcode
+
+  build_test:
+    runs-on: self-hosted
+    needs: [ lint ]
+    if: startsWith(github.ref, 'refs/heads/release')
+    steps:
+      - run: go mod tidy
+      - run: go mod vendor
+      - run: echo IMAGE_TAG="v${{ env.DATE }}-${GITHUB_SHA::7}" >> $GITHUB_ENV
+      - run: docker build -t ${{ env.IMAGE_PREFIX }}/${{ env.PROJECT_NAME }}:$IMAGE_TAG .
+      - run: docker push ${{ env.IMAGE_PREFIX }}/${{ env.PROJECT_NAME }}:$IMAGE_TAG
+      - run: docker rmi ${{ env.IMAGE_PREFIX }}/${{ env.PROJECT_NAME }}:$IMAGE_TAG
+
+  build_staging:
+    runs-on: self-hosted
+    needs: [ lint ]
+    if: ${{ github.ref_type == 'tag' }}
+    steps:
+      - run: echo ${{ github.ref_type }}
+      - run: go mod tidy
+      - run: go mod vendor
+      - run: echo IMAGE_TAG="v${{ env.DATE }}-${GITHUB_SHA::7}" >> $GITHUB_ENV
+      - run: docker build -t ${{ env.IMAGE_PREFIX }}/${{ env.PROJECT_NAME }}:$IMAGE_TAG .
+      - run: docker push ${{ env.IMAGE_PREFIX }}/${{ env.PROJECT_NAME }}:$IMAGE_TAG
+      - run: docker tag ${{ env.IMAGE_PREFIX }}/${{ env.PROJECT_NAME }}:$IMAGE_TAG ${{ env.IMAGE_PREFIX }}/${{ env.PROJECT_NAME }}:latest
+      - run: docker push ${{ env.IMAGE_PREFIX }}/${{ env.PROJECT_NAME }}:latest
+      - run: docker rmi ${{ env.IMAGE_PREFIX }}/${{ env.PROJECT_NAME }}:$IMAGE_TAG
+
+  deploy_test:
+    runs-on: self-hosted
+    needs: [ lint,build_test ]
+    if: startsWith(github.ref, 'refs/heads/release')
+    steps:
+      - run: echo IMAGE_TAG="v${{ env.DATE }}-${GITHUB_SHA::7}" >> $GITHUB_ENV
+      - run: /opt/upImage.sh ${{ env.IMAGE_PREFIX }}/${{ env.PROJECT_NAME }}:$IMAGE_TAG $GITHUB_REF_NAME
+
+  deploy_staging:
+    runs-on: self-hosted
+    needs: [ lint,build_staging ]
+    if: ${{ github.ref_type == 'tag' }}
+    steps:
+      - run: echo IMAGE_TAG="v${{ env.DATE }}-${GITHUB_SHA::7}" >> $GITHUB_ENV
+      - run: helm upgrade ${{ env.PROJECT_NAME }} /root/quanxiang_charts_staging/${{ env.PROJECT_NAME }} --kubeconfig ~/.kube/config_staging --set image.tag=$IMAGE_TAG --set image.repo=$IMAGE_PREFIX -n lowcode
