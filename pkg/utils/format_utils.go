@@ -2,7 +2,7 @@ package utils
 
 import (
 	"encoding/json"
-	"git.internal.yunify.com/qxp/misc/logger"
+	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
 	"strconv"
 	"time"
 )

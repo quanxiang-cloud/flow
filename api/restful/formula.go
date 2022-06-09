@@ -1,12 +1,12 @@
 package restful
 
 import (
-	"git.internal.yunify.com/qxp/misc/logger"
-	"git.internal.yunify.com/qxp/misc/resp"
 	"github.com/gin-gonic/gin"
 	"github.com/quanxiang-cloud/flow/internal/eval"
 	"github.com/quanxiang-cloud/flow/internal/server/options"
 	"github.com/quanxiang-cloud/flow/pkg/config"
+	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
+	"github.com/quanxiang-cloud/flow/pkg/misc/resp"
 	"net/http"
 )
 

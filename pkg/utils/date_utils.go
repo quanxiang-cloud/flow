@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"git.internal.yunify.com/qxp/misc/time2"
+	"github.com/quanxiang-cloud/flow/pkg/misc/time2"
 	"time"
 )
 

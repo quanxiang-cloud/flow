@@ -2,7 +2,6 @@ package flow
 
 import (
 	"context"
-	"git.internal.yunify.com/qxp/misc/error2"
 	"github.com/quanxiang-cloud/flow/internal/convert"
 	"github.com/quanxiang-cloud/flow/internal/models"
 	"github.com/quanxiang-cloud/flow/internal/models/mysql"
@@ -10,6 +9,7 @@ import (
 	"github.com/quanxiang-cloud/flow/pkg"
 	"github.com/quanxiang-cloud/flow/pkg/client"
 	"github.com/quanxiang-cloud/flow/pkg/config"
+	"github.com/quanxiang-cloud/flow/pkg/misc/error2"
 	"github.com/quanxiang-cloud/flow/pkg/page"
 	"gorm.io/gorm"
 )

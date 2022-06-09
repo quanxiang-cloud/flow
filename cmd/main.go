@@ -10,7 +10,7 @@ import (
 	"github.com/quanxiang-cloud/flow/api/restful"
 	"github.com/quanxiang-cloud/flow/pkg/config"
 
-	"git.internal.yunify.com/qxp/misc/logger"
+	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
 )
 
 var (

@@ -1,14 +1,14 @@
 package restful
 
 import (
-	"git.internal.yunify.com/qxp/misc/logger"
-	"git.internal.yunify.com/qxp/misc/mysql2"
 	"github.com/quanxiang-cloud/flow/internal/callback"
 	"github.com/quanxiang-cloud/flow/internal/server"
 	"github.com/quanxiang-cloud/flow/internal/server/options"
 	"github.com/quanxiang-cloud/flow/internal/svc"
 	"github.com/quanxiang-cloud/flow/pb"
 	"github.com/quanxiang-cloud/flow/pkg/config"
+	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
+	"github.com/quanxiang-cloud/flow/pkg/misc/mysql2"
 	"github.com/tal-tech/go-zero/core/conf"
 	"github.com/tal-tech/go-zero/zrpc"
 	"google.golang.org/grpc"

@@ -1,15 +1,15 @@
 package config
 
 import (
-	"git.internal.yunify.com/qxp/misc/client"
-	"git.internal.yunify.com/qxp/misc/kafka"
-	"git.internal.yunify.com/qxp/misc/mysql2"
-	"git.internal.yunify.com/qxp/misc/redis2"
+	"github.com/quanxiang-cloud/flow/pkg/misc/client"
+	"github.com/quanxiang-cloud/flow/pkg/misc/kafka"
+	"github.com/quanxiang-cloud/flow/pkg/misc/mysql2"
+	"github.com/quanxiang-cloud/flow/pkg/misc/redis2"
 	"gopkg.in/yaml.v2"
 	"os"
 	"time"
 
-	"git.internal.yunify.com/qxp/misc/logger"
+	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
 )
 
 // Config 全局配置对象

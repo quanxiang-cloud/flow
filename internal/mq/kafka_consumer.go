@@ -3,10 +3,10 @@ package mq
 import (
 	"encoding/json"
 	"fmt"
-	"git.internal.yunify.com/qxp/misc/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/quanxiang-cloud/flow/internal/flow"
 	"github.com/quanxiang-cloud/flow/pkg"
+	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
 	"github.com/quanxiang-cloud/flow/pkg/redis"
 	"github.com/quanxiang-cloud/flow/pkg/utils"
 	"io/ioutil"

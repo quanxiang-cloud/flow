@@ -3,10 +3,10 @@ package logic
 import (
 	"context"
 	"fmt"
-	"git.internal.yunify.com/qxp/misc/logger"
 	"github.com/quanxiang-cloud/flow/internal/svc"
 	"github.com/quanxiang-cloud/flow/pb"
 	"github.com/quanxiang-cloud/flow/pkg"
+	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
 )
 
 // EventHandler handler

@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"git.internal.yunify.com/qxp/misc/logger"
+	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
 	"strings"
 )
 

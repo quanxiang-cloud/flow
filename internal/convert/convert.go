@@ -2,9 +2,9 @@ package convert
 
 import (
 	"encoding/json"
-	"git.internal.yunify.com/qxp/misc/error2"
-	"git.internal.yunify.com/qxp/misc/logger"
 	"github.com/quanxiang-cloud/flow/internal"
+	"github.com/quanxiang-cloud/flow/pkg/misc/error2"
+	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
 	"github.com/quanxiang-cloud/flow/pkg/utils"
 	"reflect"
 	"strings"

@@ -5,15 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"git.internal.yunify.com/qxp/misc/client"
 	"github.com/quanxiang-cloud/flow/pkg"
+	"github.com/quanxiang-cloud/flow/pkg/misc/client"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"time"
 
-	"git.internal.yunify.com/qxp/misc/logger"
-	"git.internal.yunify.com/qxp/misc/resp"
+	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
+	"github.com/quanxiang-cloud/flow/pkg/misc/resp"
 )
 
 // Config config
