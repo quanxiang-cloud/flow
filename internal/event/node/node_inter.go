@@ -2,7 +2,7 @@ package node
 
 import (
 	"context"
-	"git.internal.yunify.com/qxp/flow/internal/convert"
+	"github.com/quanxiang-cloud/flow/internal/convert"
 )
 
 // INode inter

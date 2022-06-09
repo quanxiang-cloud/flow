@@ -2,10 +2,12 @@ package redis
 
 import (
 	"context"
+	"time"
+
 	"git.internal.yunify.com/qxp/misc/redis2"
+	"github.com/go-redis/redis/v8"
 	internal "github.com/quanxiang-cloud/flow/internal"
 	"github.com/quanxiang-cloud/flow/pkg/config"
-	"time"
 )
 
 // ClusterClient redis集群客户端
