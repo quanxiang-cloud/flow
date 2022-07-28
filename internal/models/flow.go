@@ -1,3 +1,16 @@
+/*
+Copyright 2022 QuanxiangCloud Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package models
 
 import "gorm.io/gorm"
@@ -13,6 +26,7 @@ type Flow struct {
 	TriggerMode string `json:"triggerMode" binding:"required"` // FORM_DATA|FORM_TIME
 	FormID      string `json:"formId"`
 	BpmnText    string `json:"bpmnText"`   // flow model json
+	Cron        string `json:"cron"`       // if TriggerMode eq FORM_TIME required
 	ProcessKey  string `json:"processKey"` // Process key, used to start the process by the id
 	Status      string `json:"status"`
 	CanCancel   int8   `json:"canCancel"`
@@ -59,4 +73,6 @@ type FlowRepo interface {
 	FindFlowList(db *gorm.DB, condition map[string]interface{}) ([]*Flow, error)
 	UpdateAppStatus(db *gorm.DB, appID string, appStatus string) error
 	DeleteByIDs(db *gorm.DB, IDs []string) error
+
+	FindPublishIDs(db *gorm.DB, flowID string) ([]string, error)
 }

@@ -2,14 +2,14 @@
 # debug模式，可以输出更加详细的日志，但是运行速度会减慢
 model: debug
 
-port: :9080
+port: :80
 
 #-------------------mysql配置---------------------
 mysql:
   db: flow
-  host: 192.168.200.18:3306
+  host: mysql:3306
   user: root
-  password: uyWxtvt6gCOy3VPLB3rTpa0rQ
+  password: qxp1234
   log: true
 
 
@@ -35,18 +35,14 @@ internalNet:
 #-------------------redis配置-----------------
 redis:
   addrs:
-    - 192.168.200.18:6379
-    - 192.168.200.19:6379
-    - 192.168.200.20:6379
+    - example-distributedrediscluster-0.lowcode.svc.cluster.local:6379
+    - example-distributedrediscluster-1.lowcode.svc.cluster.local:6379
+    - example-distributedrediscluster-2.lowcode.svc.cluster.local:6379
   username:
-  password:
+  password: qxp1234
 
-# -------------------- kafka --------------------
-kafka:
-  broker:
-    - 192.168.200.18:9092
-    - 192.168.200.19:9092
-    - 192.168.200.20:9092
+
+
 
 
 #  -------------------- internal server client --------------------
@@ -60,6 +56,8 @@ api:
   dispatcherHost: http://dispatcher/
   processHost: http://process/
   polyAPIHost: http://polyapi:9090/
+  homeHost: http://home.faasall.com/
+
 
 # ----------------------rpc config-----------------------------------
 Name: message.rpc

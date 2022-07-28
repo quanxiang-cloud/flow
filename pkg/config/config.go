@@ -1,3 +1,16 @@
+/*
+Copyright 2022 QuanxiangCloud Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package config
 
 import (
@@ -25,6 +38,9 @@ type Configs struct {
 	Redis       redis2.Config `yaml:"redis"`
 	Kafka       kafka.Config  `yaml:"kafka"`
 	APIHost     APIHost       `yaml:"api"`
+
+	Name     string `yaml:"Name"`
+	ListenOn string `yaml:"ListenOn"`
 }
 
 // HTTPServer http服务配置
@@ -42,10 +58,10 @@ type APIHost struct {
 	FormHost          string `yaml:"formHost" validate:"required"`
 	AppCenterHost     string `yaml:"appCenterHost" validate:"required"`
 	MessageCenterHost string `yaml:"messageCenterHost" validate:"required"`
-	StructorHost      string `yaml:"structorHost" validate:"required"`
 	DispatcherHost    string `yaml:"dispatcherHost" validate:"required"`
 	ProcessHost       string `yaml:"processHost" validate:"required"`
 	PolyAPIHost       string `yaml:"polyAPIHost" validate:"required"`
+	HomeHost          string `yaml:"homeHost" validate:"required"`
 }
 
 // Init 初始化

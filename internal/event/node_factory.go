@@ -1,9 +1,23 @@
+/*
+Copyright 2022 QuanxiangCloud Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package event
 
 import (
 	"github.com/quanxiang-cloud/flow/internal/convert"
 	"github.com/quanxiang-cloud/flow/internal/event/node"
 	"github.com/quanxiang-cloud/flow/internal/flow"
+	"github.com/quanxiang-cloud/flow/internal/flow/callback_tasks"
 	"github.com/quanxiang-cloud/flow/internal/models/mysql"
 	"github.com/quanxiang-cloud/flow/internal/server/options"
 	"github.com/quanxiang-cloud/flow/pkg/client"
@@ -20,6 +34,7 @@ type NodeFactory struct {
 	webHook        *node.WebHook
 	variableUpdate *node.VariableUpdate
 	userTask       *node.UserTask
+	delay          *node.Delay
 }
 
 // NewNodeFactory new
@@ -28,7 +43,7 @@ func NewNodeFactory(conf *config.Configs, opts ...options.Options) (*NodeFactory
 	if err != nil {
 		return nil, nil
 	}
-	urge, err := flow.NewUrge(conf, opts...)
+	urge, err := callback_tasks.NewUrge(conf, opts...)
 	if err != nil {
 		return nil, nil
 	}
@@ -46,22 +61,24 @@ func NewNodeFactory(conf *config.Configs, opts ...options.Options) (*NodeFactory
 	}
 
 	n := &node.Node{
-		FlowRepo:              mysql.NewFlowRepo(),
-		FormAPI:               client.NewForm(conf),
-		InstanceRepo:          mysql.NewInstanceRepo(),
-		InstanceVariablesRepo: mysql.NewInstanceVariablesRepo(),
-		AbnormalTaskRepo:      mysql.NewAbnormalTaskRepo(),
-		FlowVariable:          mysql.NewVariablesRepo(),
-		MessageCenterAPI:      client.NewMessageCenter(conf),
-		StructorAPI:           client.NewStructor(conf),
-		ProcessAPI:            client.NewProcess(conf),
-		IdentityAPI:           client.NewIdentity(conf),
-		Urge:                  urge,
-		Flow:                  flow,
-		Instance:              instance,
-		OperationRecord:       operationRecord,
-		InstanceExecutionRepo: mysql.NewInstanceExecutionRepo(),
-		Task:                  task,
+		FlowRepo:               mysql.NewFlowRepo(),
+		FormAPI:                client.NewForm(conf),
+		InstanceRepo:           mysql.NewInstanceRepo(),
+		InstanceVariablesRepo:  mysql.NewInstanceVariablesRepo(),
+		AbnormalTaskRepo:       mysql.NewAbnormalTaskRepo(),
+		FlowVariable:           mysql.NewVariablesRepo(),
+		DispatcherCallbackRepo: mysql.NewDispatcherCallbackRepo(),
+		MessageCenterAPI:       client.NewMessageCenter(conf),
+		StructorAPI:            client.NewStructor(conf),
+		ProcessAPI:             client.NewProcess(conf),
+		IdentityAPI:            client.NewIdentity(conf),
+		Dispatcher:             client.NewDispatcher(conf),
+		Urge:                   *urge,
+		Flow:                   flow,
+		Instance:               instance,
+		OperationRecord:        operationRecord,
+		InstanceExecutionRepo:  mysql.NewInstanceExecutionRepo(),
+		Task:                   task,
 	}
 	for _, opt := range opts {
 		opt(n)
@@ -76,6 +93,7 @@ func NewNodeFactory(conf *config.Configs, opts ...options.Options) (*NodeFactory
 		webHook:        node.NewWebHook(conf, n),
 		variableUpdate: node.NewVariableUpdate(conf, n),
 		userTask:       node.NewUserTask(conf, n),
+		delay:          node.NewDelay(conf, n),
 	}, nil
 }
 
@@ -100,6 +118,8 @@ func (f *NodeFactory) GetNode(nodeName string) node.INode {
 		fallthrough
 	case convert.FillIn:
 		return f.userTask
+	case convert.Delayed:
+		return f.delay
 	}
 
 	return nil

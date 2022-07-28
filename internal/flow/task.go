@@ -1,3 +1,16 @@
+/*
+Copyright 2022 QuanxiangCloud Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package flow
 
 import (
@@ -29,6 +42,27 @@ type Task interface {
 	GetCurrentNodes(ctx context.Context, processInstanceID string) ([]models.NodeModel, error)
 	AutoReviewTask(ctx context.Context, flowEntity *models.Flow, flowInstanceEntity *models.Instance, task *client.ProcessTask, userID string, params map[string]interface{}) error
 	PermissionConvertWriteRead(permission int8) (bool, bool)
+	GetCurrentNodesInfo(ctx context.Context, processInstanceID string) ([]*client.ProcessTask, error)
+}
+
+// entry type
+const (
+	FirstEntry = "firstEntry"
+	Entry      = "entry"
+	FlowWorked = "flowWorked"
+)
+
+// urge type
+const (
+	DEADLINE = "DEADLINE"
+	URGE     = "URGE"
+)
+
+// DispatcherCallOtherInfo struct
+type DispatcherCallOtherInfo struct {
+	FlowInstanceID string `json:"flowInstanceId"`
+	TaskID         string `json:"TaskID"`
+	TaskDefKey     string `json:"taskDefKey"`
 }
 
 type task struct {
@@ -37,12 +71,14 @@ type task struct {
 	formAPI                client.Form
 	identityAPI            client.Identity
 	processAPI             client.Process
+	messageCenterAPI       client.MessageCenter
 	flow                   Flow
 	abnormalTaskRepo       models.AbnormalTaskRepo
 	operationRecord        OperationRecord
 	dispatcherCallbackRepo models.DispatcherCallbackRepo
 	dispatcherAPI          client.Dispatcher
 	flowInstanceRepo       models.InstanceRepo
+	serverConf             *config.Configs
 }
 
 // NewTask init
@@ -57,6 +93,7 @@ func NewTask(conf *config.Configs, opts ...options.Options) (Task, error) {
 		return nil, err
 	}
 	t := &task{
+		serverConf:             conf,
 		operationRecordRepo:    mysql.NewOperationRecordRepo(),
 		formAPI:                client.NewForm(conf),
 		identityAPI:            client.NewIdentity(conf),
@@ -67,6 +104,7 @@ func NewTask(conf *config.Configs, opts ...options.Options) (Task, error) {
 		dispatcherCallbackRepo: mysql.NewDispatcherCallbackRepo(),
 		dispatcherAPI:          client.NewDispatcher(conf),
 		flowInstanceRepo:       mysql.NewInstanceRepo(),
+		messageCenterAPI:       client.NewMessageCenter(conf),
 	}
 
 	for _, opt := range opts {
@@ -141,6 +179,8 @@ func (t *task) TaskInitHandle(ctx context.Context, flowEntity *models.Flow, flow
 		if err != nil {
 			logger.Logger.Error(err)
 		}
+
+		//go t.sendHandleMessage(ctx, flowInstanceEntity, task, handleUserIds)
 	}
 
 	// 检查流程实例状态，如果流程实例结束，则flow要同步状态
@@ -159,6 +199,38 @@ func (t *task) TaskInitHandle(ctx context.Context, flowEntity *models.Flow, flow
 	}
 
 	return nil
+}
+
+// sendHandleMessage send handle message to assignee user
+func (t *task) sendHandleMessage(ctx context.Context, instance *models.Instance, task *client.ProcessTask, handleUserIDs []string) error {
+	messageContent := "有新的" + instance.Name + "流程的审批，请点击查看：" + t.serverConf.APIHost.HomeHost + "approvals/" +
+		instance.ProcessInstanceID + "/" + task.ID + "/WAIT_HANDLE_PAGE"
+
+	handleUsers, err := t.identityAPI.FindUsersByIDs(ctx, handleUserIDs)
+	if err != nil {
+		return err
+	}
+	emailAddrs := make([]string, 0)
+	for _, user := range handleUsers {
+		if len(user.Email) > 0 {
+			emailAddrs = append(emailAddrs, user.Email)
+		}
+	}
+
+	if len(emailAddrs) == 0 {
+		return nil
+	}
+
+	msgReq := client.MsgReq{
+		Email: client.Email{
+			To: emailAddrs,
+			Contents: client.Contents{
+				Content: messageContent,
+			},
+			Title: "审批提醒",
+		},
+	}
+	return t.messageCenterAPI.MessageCreate(ctx, msgReq)
 }
 
 // noUserHandle no user handle
@@ -215,7 +287,7 @@ func (t *task) TaskUrging(ctx context.Context, rule convert.TaskTimeRuleModel, n
 		return nil
 	}
 	deadLine := rule.DeadLine
-	if deadLine.BreakPoint == firstEntry {
+	if deadLine.BreakPoint == FirstEntry {
 		resp, err := t.processAPI.GetHistoryTasks(ctx, client.GetTasksReq{
 			InstanceID: []string{instance.ProcessInstanceID},
 			NodeDefKey: nodeID,
@@ -330,10 +402,10 @@ func (t *task) AutoReviewTask(ctx context.Context, flowEntity *models.Flow, flow
 func (t *task) setTimeRule(ctx context.Context, flowInstanceEntity *models.Instance, task *client.ProcessTask, timeRule convert.TaskTimeRuleModel) error {
 	// entry进入该节点后,firstEntry首次进入该节点后,flowWorked工作流开始后
 	if len(timeRule.DeadLine.BreakPoint) > 0 {
-		if "entry" == timeRule.DeadLine.BreakPoint { // 进入该节点后
+		if Entry == timeRule.DeadLine.BreakPoint { // 进入该节点后
 			dueDate := utils.AddDaysHoursMinutes(task.CreateTime, int(timeRule.DeadLine.Day), int(timeRule.DeadLine.Hours), int(timeRule.DeadLine.Minutes))
 			t.processAPI.SetDueDate(ctx, task.ID, dueDate)
-		} else if "firstEntry" == timeRule.DeadLine.BreakPoint { // 首次进入该节点后
+		} else if FirstEntry == timeRule.DeadLine.BreakPoint { // 首次进入该节点后
 			taskCondition := client.GetTasksReq{
 				InstanceID: []string{flowInstanceEntity.ProcessInstanceID},
 				NodeDefKey: task.NodeDefKey,
@@ -347,7 +419,7 @@ func (t *task) setTimeRule(ctx context.Context, flowInstanceEntity *models.Insta
 				dueDate := utils.AddDaysHoursMinutes(actRuTaskEntity.CreateTime, int(timeRule.DeadLine.Day), int(timeRule.DeadLine.Hours), int(timeRule.DeadLine.Minutes))
 				t.processAPI.SetDueDate(ctx, task.ID, dueDate)
 			}
-		} else if "flowWorked" == timeRule.DeadLine.BreakPoint { // 工作流开始后
+		} else if FlowWorked == timeRule.DeadLine.BreakPoint { // 工作流开始后
 			dueDate := utils.AddDaysHoursMinutes(flowInstanceEntity.CreateTime, int(timeRule.DeadLine.Day), int(timeRule.DeadLine.Hours), int(timeRule.DeadLine.Minutes))
 			t.processAPI.SetDueDate(ctx, task.ID, dueDate)
 		}
@@ -562,7 +634,7 @@ func (t *task) filterEntityCanReadFormData(entity interface{}, fieldPermissionMa
 	return entityMap
 }
 
-// GetCurrentNodes
+// GetCurrentNodes 获取当前节点
 func (t *task) GetCurrentNodes(ctx context.Context, processInstanceID string) ([]models.NodeModel, error) {
 	taskCondition := client.GetTasksReq{
 		InstanceID: []string{processInstanceID},
@@ -585,6 +657,29 @@ func (t *task) GetCurrentNodes(ctx context.Context, processInstanceID string) ([
 		}
 
 		return nodes, nil
+	}
+	return nil, nil
+}
+
+// GetCurrentNodesInfo detail info
+func (t *task) GetCurrentNodesInfo(ctx context.Context, processInstanceID string) ([]*client.ProcessTask, error) {
+	taskCondition := client.GetTasksReq{
+		InstanceID: []string{processInstanceID},
+	}
+	tasksResp, err := t.processAPI.GetTasks(ctx, taskCondition)
+	if err != nil {
+		return nil, err
+	}
+	if len(tasksResp.Data) > 0 {
+		tasks := make([]*client.ProcessTask, 0)
+		for _, value := range tasksResp.Data {
+			if value.TaskType == "NON_MODEL" {
+				continue
+			}
+			tasks = append(tasks, value)
+		}
+
+		return tasks, nil
 	}
 	return nil, nil
 }

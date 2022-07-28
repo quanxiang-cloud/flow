@@ -1,3 +1,16 @@
+/*
+Copyright 2022 QuanxiangCloud Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package client
 
 import (
@@ -8,6 +21,7 @@ import (
 	"github.com/quanxiang-cloud/flow/pkg"
 	"github.com/quanxiang-cloud/flow/pkg/misc/client"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"net/http"
 	"time"
@@ -20,6 +34,13 @@ import (
 type Config struct {
 	Timeout      time.Duration
 	MaxIdleConns int
+}
+
+// HttpRetryConf retry config
+type HttpRetryConf struct {
+	Attempts int
+	Sleep    time.Duration
+	Func     func(ctx context.Context, client *http.Client, uri string, params interface{}, entity interface{}, headers map[string]string) error
 }
 
 // NewClient new a http client
@@ -54,6 +75,11 @@ func MarshalInner(data interface{}) ([]byte, error) {
 // POST http post
 func POST(ctx context.Context, client *http.Client, uri string, params interface{}, entity interface{}) error {
 	return POST2(ctx, client, uri, params, entity, nil)
+	//return HttpRetry(ctx, client, uri, params, entity, nil, &HttpRetryConf{
+	//	Attempts: 3,
+	//	Sleep:    time.Second * 5,
+	//	Func:     POST2,
+	//})
 }
 
 // POST2 http post
@@ -90,11 +116,12 @@ func POST2(ctx context.Context, client *http.Client, uri string, params interfac
 		return err
 	}
 	defer response.Body.Close()
-
-	err = resp.DeserializationResp(ctx, response, entity)
-	if err != nil {
-		logger.Logger.Errorw(err.Error(), pkg.STDRequestID(ctx))
-		return err
+	if response.StatusCode == http.StatusOK {
+		err = resp.DeserializationResp(ctx, response, entity)
+		if err != nil {
+			logger.Logger.Errorw(err.Error(), pkg.STDRequestID(ctx))
+			return err
+		}
 	}
 	return err
 }
@@ -133,15 +160,33 @@ func Request(ctx context.Context, client *http.Client, uri string, params interf
 		return err
 	}
 	logger.Logger.Info("Request-Id:" + pkg.STDRequestID(ctx).String + " resp:" + string(body))
-	err = json.Unmarshal(body, entity)
-	if err != nil {
-		logger.Logger.Errorw(err.Error(), pkg.STDRequestID(ctx))
-		return err
+	if response.StatusCode == http.StatusOK {
+		err = json.Unmarshal(body, entity)
+		if err != nil {
+			logger.Logger.Errorw(err.Error(), pkg.STDRequestID(ctx))
+			return err
+		}
 	}
 	// err = resp.DeserializationResp(ctx, response, entity)
 	// if err != nil {
 	// 	logger.Logger.Errorw(err.Error(), pkg.STDRequestID(ctx))
 	// 	return err
 	// }
+	return nil
+}
+
+func HttpRetry(ctx context.Context, client *http.Client, uri string, params interface{}, entity interface{}, headers map[string]string, C *HttpRetryConf) error {
+	err := C.Func(ctx, client, uri, params, entity, headers)
+	if err != nil {
+		if C.Attempts--; C.Attempts > 0 {
+			logger.Logger.Errorf("http call error. retrying times: %d...\n", C.Attempts)
+			// Add some randomness to prevent creating a Thundering Herd
+			jitter := time.Duration(rand.Int63n(int64(C.Sleep)))
+			C.Sleep = C.Sleep + jitter/2
+			time.Sleep(C.Sleep)
+			return HttpRetry(ctx, client, uri, params, headers, headers, C)
+		}
+		return err
+	}
 	return nil
 }

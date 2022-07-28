@@ -1,3 +1,16 @@
+/*
+Copyright 2022 QuanxiangCloud Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package mysql
 
 import (
@@ -89,6 +102,8 @@ func (r *flowRepo) UpdateFlow(db *gorm.DB, model *models.Flow) error {
 	m["key_fields"] = model.KeyFields
 	m["modifier_id"] = model.ModifierID
 	m["modify_time"] = time2.Now()
+	m["process_id"] = model.ProcessID
+	m["cron"] = model.Cron
 	err := db.Table(r.TableName()).Where("id=?", model.ID).Updates(m).Error
 
 	return err
@@ -146,6 +161,16 @@ func (r *flowRepo) FindFlows(db *gorm.DB, condition map[string]interface{}) ([]*
 		return nil, err
 	}
 	return flows, nil
+}
+
+func (r *flowRepo) FindPublishIDs(db *gorm.DB, flowID string) ([]string, error) {
+	flowIDs := make([]string, 0)
+	err := db.Table(r.TableName()).Select([]string{"id"}).
+		Where("source_id = ?", flowID).
+		Find(&flowIDs).
+		Error
+
+	return flowIDs, err
 }
 
 // GetFlows find flow list

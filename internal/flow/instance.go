@@ -1,3 +1,16 @@
+/*
+Copyright 2022 QuanxiangCloud Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package flow
 
 import (
@@ -98,7 +111,8 @@ func GetStatusName(status string) string {
 	return ""
 }
 
-func isFlowOngoing(status string) bool {
+// IsFlowOngoing IsFlowOngoing
+func IsFlowOngoing(status string) bool {
 	return Review == status || InReview == status || SendBack == status
 }
 
@@ -117,11 +131,15 @@ type Instance interface {
 	FormDataDeleted(ctx context.Context, formDataIDs []string, userID string) error
 	AbendFlowInstance(ctx context.Context, flowInstanceEntity *models.Instance, remark string, userID string) error
 
+	List(ctx context.Context, req *ListReq) (*page.RespPage, error)
+	NodeList(ctx context.Context, req *NodeListReq) ([]map[string]interface{}, error)
+
 	MyApplyList(ctx context.Context, req *MyApplyReq) (*page.RespPage, error)
 	WaitReviewList(ctx context.Context, req *TaskListReq) (*page.RespPage, error)
 	ReviewedList(ctx context.Context, req *TaskListReq) (*page.RespPage, error)
 	CcToMeList(ctx context.Context, req *CcListReq) (*page.RespPage, error)
 	AllList(ctx context.Context, req *TaskListReq) (*page.RespPage, error)
+
 	InstanceAddFormData(ctx context.Context, data []map[string]interface{}) error
 
 	ConvertTask(ctx context.Context, tasks []*client.ProcessTask) ([]*models.ActTaskEntity, []string, []string)
@@ -165,6 +183,7 @@ type instance struct {
 	identityAPI           client.Identity
 	formAPI               client.Form
 	structorAPI           client.Structor
+	appCenterAPI          client.AppCenter
 	urgeRepo              models.UrgeRepo
 	stepRepo              models.InstanceStepRepo
 	recordRepo            models.OperationRecordRepo
@@ -190,6 +209,7 @@ func NewInstance(conf *config.Configs, opts ...options.Options) (Instance, error
 		identityAPI:           client.NewIdentity(conf),
 		structorAPI:           client.NewStructor(conf),
 		formAPI:               client.NewForm(conf),
+		appCenterAPI:          client.NewAppCenter(conf),
 		urgeRepo:              mysql.NewUrgeRepo(),
 		operationRecordRepo:   mysql.NewOperationRecordRepo(),
 		stepRepo:              mysql.NewInstanceStepRepo(),
@@ -222,33 +242,39 @@ func (i *instance) StartFlow(ctx context.Context, req *StartFlowModel) (string, 
 	appName, err := appCenter.GetAppName(ctx, flowEntity.AppID)
 
 	identity := client.NewIdentity(i.conf)
-	myUserEntity, err := identity.FindUserByID(ctx, req.UserID)
+
+	userID := ""
+	if req.UserID == "" {
+		userID = flowEntity.CreatorID
+	} else {
+		userID = req.UserID
+	}
+
+	myUserEntity, err := identity.FindUserByID(ctx, userID)
 	if err != nil || myUserEntity == nil {
 		return "", error2.NewErrorWithString(error2.Internal, "Can not find apply user info ")
 	}
-
-	formDataID, ok := req.FormData["_id"]
-	if !ok {
-		return "", nil
+	processReq := client.StartProcessReq{
+		ProcessID: flowEntity.ProcessID,
+		UserID:    flowEntity.CreatorID,
 	}
-	formReq := client.FormDataConditionModel{
-		AppID:   flowEntity.AppID,
-		TableID: flowEntity.FormID,
-		DataID:  formDataID.(string),
+	if flowEntity.TriggerMode != convert.FormTime {
+		formReq := client.FormDataConditionModel{
+			AppID:   flowEntity.AppID,
+			TableID: flowEntity.FormID,
+			DataID:  req.FormData["_id"].(string),
+		}
+		formData, err := i.formAPI.GetFormData(ctx, formReq)
+		if err != nil {
+			return "", error2.NewErrorWithString(error2.Internal, "Get form data error ")
+		}
+		req.FormData = formData
+		processReq.UserID = req.UserID
+		processReq.Params = req.FormData
 	}
-	formData, err := i.formAPI.GetFormData(ctx, formReq)
-	if err != nil {
-		return "", error2.NewErrorWithString(error2.Internal, "Get form data error ")
-	}
-
-	req.FormData = formData
 
 	process := client.NewProcess(i.conf)
-	startProcessResp, err := process.StartProcessInstance(ctx, client.StartProcessReq{
-		ProcessID: flowEntity.ProcessID,
-		UserID:    req.UserID,
-		Params:    req.FormData,
-	})
+	startProcessResp, err := process.StartProcessInstance(ctx, processReq)
 	if err != nil {
 		return "", err
 	}
@@ -259,16 +285,22 @@ func (i *instance) StartFlow(ctx context.Context, req *StartFlowModel) (string, 
 		FlowID:            req.FlowID,
 		ProcessInstanceID: startProcessResp.InstanceID,
 		FormID:            flowEntity.FormID,
-		FormInstanceID:    req.FormData["_id"].(string),
-		ApplyUserID:       req.UserID,
-		ApplyUserName:     myUserEntity.UserName,
-		AppStatus:         mysql.AppActiveStatus,
+		//FormInstanceID:    req.FormData["_id"].(string),
+		ApplyUserID:   flowEntity.CreatorID,
+		ApplyUserName: myUserEntity.UserName,
+		AppStatus:     mysql.AppActiveStatus,
 		BaseModel: models.BaseModel{
-			CreatorID:  req.UserID,
+			CreatorID:  flowEntity.CreatorID,
 			ModifyTime: time2.Now(),
 			CreateTime: time2.Now(),
 		},
 		Status: Review,
+	}
+	if flowEntity.TriggerMode == "FORM_DATA" {
+		flowInstanceEntity.FormInstanceID = req.FormData["_id"].(string)
+		flowInstanceEntity.ApplyUserID = req.UserID
+		flowInstanceEntity.BaseModel.CreatorID = req.UserID
+
 	}
 
 	if len(flowEntity.InstanceName) > 0 {
@@ -479,6 +511,90 @@ func (i *instance) InstanceAddFormData(ctx context.Context, data []map[string]in
 	}
 
 	return nil
+}
+
+func (i *instance) List(ctx context.Context, req *ListReq) (*page.RespPage, error) {
+	appIDs, err := i.appCenterAPI.GetAdminAppIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(appIDs) == 0 || !utils.Contain(appIDs, req.AppID) {
+		return &page.RespPage{
+			Data:       nil,
+			TotalCount: 0,
+		}, nil
+	}
+
+	flowIDs, err := i.flowRepo.FindPublishIDs(i.db, req.FlowID)
+	if err != nil {
+		return nil, err
+	}
+	if len(flowIDs) == 0 {
+		return &page.RespPage{
+			Data:       nil,
+			TotalCount: 0,
+		}, nil
+	}
+
+	orderItem := page.OrderItem{
+		Column:    "create_time",
+		Direction: page.Desc,
+	}
+	req.ReqPage.Orders = []page.OrderItem{orderItem}
+
+	queryWrapper := &models.PageInstancesReq{
+		ReqPage: req.ReqPage,
+		FlowIDs: flowIDs,
+	}
+
+	dataList, count, err := i.instanceRepo.PageInstances(i.db, queryWrapper)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &page.RespPage{}
+	if len(dataList) > 0 {
+		data := utils.ChangeObjectToMapList(dataList)
+		i.identityAPI.AddUserInfo(ctx, data)
+
+		for _, flowInstanceEntity := range data {
+			nodes, _ := i.task.GetCurrentNodesInfo(ctx, flowInstanceEntity["processInstanceId"].(string))
+			nodesMap := utils.ChangeObjectToMapList(nodes)
+			i.identityAPI.AddUserInfo(ctx, nodesMap)
+			flowInstanceEntity["nodes"] = nodesMap
+		}
+
+		resp.TotalCount = count
+		resp.Data = data
+	}
+
+	if resp.Data == nil {
+		resp.Data = make([]map[string]interface{}, 0)
+	}
+
+	return resp, nil
+}
+
+func (i *instance) NodeList(ctx context.Context, req *NodeListReq) ([]map[string]interface{}, error) {
+	appIDs, err := i.appCenterAPI.GetAdminAppIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(appIDs) == 0 || !utils.Contain(appIDs, req.AppID) {
+		return nil, nil
+	}
+
+	nodes, err := i.processAPI.NodeInstanceList(ctx, &client.NodeInstanceListReq{
+		ProcInstanceID: req.ProcessInstanceID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	nodesMap := utils.ChangeObjectToMapList(nodes)
+	i.identityAPI.AddUserInfo(ctx, nodesMap)
+
+	return nodesMap, nil
 }
 
 func (i *instance) MyApplyList(ctx context.Context, req *MyApplyReq) (*page.RespPage, error) {
@@ -855,7 +971,7 @@ func (i *instance) Cancel(ctx context.Context, processInstanceID string) (bool, 
 		return false, err
 	}
 
-	if !(isFlowOngoing(flowInstanceEntity.Status) && flowInstanceEntity.CreatorID == userID && i.flow.checkCanCancel(ctx, flowEntity, flowInstanceEntity, tasks)) {
+	if !(IsFlowOngoing(flowInstanceEntity.Status) && flowInstanceEntity.CreatorID == userID && i.flow.checkCanCancel(ctx, flowEntity, flowInstanceEntity, tasks)) {
 		return false, error2.NewErrorWithString(error2.Internal, "Can not cancel ")
 	}
 
@@ -1983,10 +2099,10 @@ func (i *instance) getApplyPageTaskDetailModel(ctx context.Context, flowEntity *
 	}
 
 	tasks, _ := i.processAPI.GetTasksByInstanceID(ctx, flowInstanceEntity.ProcessInstanceID)
-	if i.flow.checkCanCancel(ctx, flowEntity, flowInstanceEntity, tasks) && isFlowOngoing(flowInstanceEntity.Status) {
+	if i.flow.checkCanCancel(ctx, flowEntity, flowInstanceEntity, tasks) && IsFlowOngoing(flowInstanceEntity.Status) {
 		taskDetailModel.HasCancelBtn = true
 	}
-	if flowEntity.CanUrge == 1 && isFlowOngoing(flowInstanceEntity.Status) {
+	if flowEntity.CanUrge == 1 && IsFlowOngoing(flowInstanceEntity.Status) {
 		taskDetailModel.HasUrgeBtn = true
 	}
 	return taskDetailModel
@@ -2212,10 +2328,10 @@ func (i *instance) getTaskDetailModel(ctx context.Context, flowInstanceEntity *m
 		}
 		tasks, _ := i.processAPI.GetTasksByInstanceID(ctx, flowInstanceEntity.ProcessInstanceID)
 
-		if i.flow.checkCanCancel(ctx, flowEntity, flowInstanceEntity, tasks) && isFlowOngoing(flowInstanceEntity.Status) {
+		if i.flow.checkCanCancel(ctx, flowEntity, flowInstanceEntity, tasks) && IsFlowOngoing(flowInstanceEntity.Status) {
 			taskDetailModel.HasCancelBtn = true
 		}
-		if flowEntity.CanUrge == 1 && isFlowOngoing(flowInstanceEntity.Status) {
+		if flowEntity.CanUrge == 1 && IsFlowOngoing(flowInstanceEntity.Status) {
 			taskDetailModel.HasUrgeBtn = true
 		}
 		return
@@ -2281,7 +2397,7 @@ func (i *instance) getTaskDetailModel(ctx context.Context, flowInstanceEntity *m
 			}
 		}
 
-		if isFlowOngoing(flowInstanceEntity.Status) {
+		if IsFlowOngoing(flowInstanceEntity.Status) {
 			taskDetailModel.OperatorPermission = operatorPermissionModel
 		}
 
@@ -2947,4 +3063,18 @@ type TaskDetailModel struct {
 	HasReadHandleBtn   bool        `json:"hasReadHandleBtn"`
 	HasCcHandleBtn     bool        `json:"hasCcHandleBtn"`
 	HasUrgeBtn         bool        `json:"hasUrgeBtn"`
+}
+
+// ListReq req
+type ListReq struct {
+	page.ReqPage
+
+	AppID  string `json:"appId" binding:"required"`
+	FlowID string `json:"flowId" binding:"required"`
+}
+
+// NodeListReq req
+type NodeListReq struct {
+	AppID             string `json:"appId" binding:"required"`
+	ProcessInstanceID string `json:"processInstanceId" binding:"required"`
 }

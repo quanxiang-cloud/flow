@@ -1,3 +1,16 @@
+/*
+Copyright 2022 QuanxiangCloud Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package convert
 
 import (
@@ -41,9 +54,62 @@ const (
 	SubProcess       = "SubProcess"
 )
 
+// 延时节点的延时类型
+const (
+	DelayTypeOfTableColumn = "tableColumn"
+	DelayTypeOfaTime       = "aTime"
+	DelayTypeOfSpecTime    = "specTime"
+)
+
+// 邮件节点类型
+const (
+	// EmailTypeOfField 人员选择字段(1.1.1版本前默认)
+	EmailTypeOfField = "field"
+	// EmailTypeOfMultipleField 多个字段
+	EmailTypeOfMultipleField = "multipleField"
+	// EmailTypeOfSuperior 上级领导
+	EmailTypeOfSuperior = "superior"
+	// EmailTypeOfLeadOfDepartment 部门负责人
+	EmailTypeOfLeadOfDepartment = "leadOfDepartment"
+	// EmailTypeOfProcessInitiator 发起人
+	EmailTypeOfProcessInitiator = "processInitiator"
+	// EmailTypeOfPerson 人员
+	EmailTypeOfPerson = "person"
+)
+
+// 前端组件字段类型
+const (
+	// CompOfUserPicker 人员选择器
+	CompOfUserPicker = "UserPicker"
+	// CompOfRadioGroup 单选
+	CompOfRadioGroup = "RadioGroup"
+	// CompOfTextarea 多行文本
+	CompOfTextarea = "Textarea"
+	// CompOfCheckboxGroup 复选框
+	CompOfCheckboxGroup = "CheckboxGroup"
+	// CompOfInput input输入框
+	CompOfInput = "Input"
+	// CompOfSelect 下拉框
+	CompOfSelect = "Select"
+	// CompOfMultipleSelect 下拉复选框
+	CompOfMultipleSelect = "MultipleSelect"
+)
+
+// dispatcher回调类型
+const (
+	// CallbackOfDelay 延时
+	CallbackOfDelay = "delayed"
+	// CallbackOfUrge 催单
+	CallbackOfUrge = "urge"
+	// CallbackOfCron 定时
+	CallbackOfCron = "cron"
+)
+
 // LowCode flow Chart Type
 const (
 	FormData = "formData"
+
+	FormTime = "FORM_TIME"
 	// Approve task
 	Approve = "approve"
 	// FillIn task
@@ -62,6 +128,8 @@ const (
 	TableDataUpdate = "tableDataUpdate"
 	// WebHook service task
 	WebHook = "webhook"
+	// Delayed 延时节点
+	Delayed = "delayed"
 
 	end                 = "end"
 	processBranchSource = "processBranchSource"
@@ -69,6 +137,7 @@ const (
 	processBranchTarget = "processBranchTarget"
 	plus                = "plus"
 	step                = "step"
+	PauseExecution      = "pauseExecution"
 )
 
 // Process task type
@@ -144,6 +213,7 @@ func GetFormInfoFromShapes(shapes []ShapeModel) string {
 	if form == nil {
 		return ""
 	}
+	// value = from的id
 	return utils.Strval(form["value"])
 }
 
@@ -218,7 +288,7 @@ func GetValueFromBusinessData(s ShapeModel, keyInfo string) interface{} {
 // SwitchToNodeType func
 func switchToNodeType(s ShapeModel) string {
 	switch s.Type {
-	case FormData:
+	case FormData, FormTime:
 		return Start
 	case end:
 		return End
@@ -246,6 +316,8 @@ func switchToNodeType(s ShapeModel) string {
 		fallthrough
 	case TableDataUpdate:
 		fallthrough
+	case Delayed:
+		fallthrough
 	case WebHook:
 		return Service
 	}
@@ -271,6 +343,7 @@ func GenProcessNodes(text string) ([]*ProcessNodeModel, interface{}, error) {
 		return nil, nil, err
 	}
 
+	// {node_id: node_value, ......}
 	nodeMap := make(map[string]ShapeModel)
 	for _, s := range p.Shapes {
 		nodeMap[s.ID] = s
@@ -279,6 +352,7 @@ func GenProcessNodes(text string) ([]*ProcessNodeModel, interface{}, error) {
 	formID := GetFormInfoFromShapes(p.Shapes)
 
 	nodes := make([]*ProcessNodeModel, 0)
+	// 确定每个节点的子节点
 	for _, s := range p.Shapes {
 		if processBranch == s.Type || plus == s.Type || step == s.Type {
 			continue
@@ -287,6 +361,7 @@ func GenProcessNodes(text string) ([]*ProcessNodeModel, interface{}, error) {
 		childrenIDs := s.Data.NodeData.ChildrenID
 		for _, childrenID := range childrenIDs {
 			condition := ""
+			// 如果是分流节点，则该节点将会有多个子节点
 			if processBranchSource == s.Type {
 				conditionNode := nodeMap[childrenID]
 				ignore := conditionNode.Data.BusinessData["ignore"]

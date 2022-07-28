@@ -1,8 +1,24 @@
+/*
+Copyright 2022 QuanxiangCloud Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package flow
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
+
 	"github.com/quanxiang-cloud/flow/internal"
 	"github.com/quanxiang-cloud/flow/internal/convert"
 	"github.com/quanxiang-cloud/flow/internal/models"
@@ -18,7 +34,6 @@ import (
 	"github.com/quanxiang-cloud/flow/pkg/page"
 	"github.com/quanxiang-cloud/flow/pkg/utils"
 	"gorm.io/gorm"
-	"strings"
 )
 
 // Flow service
@@ -30,7 +45,7 @@ type Flow interface {
 	FlowList(ctx context.Context, req *QueryFlowReq) (*page.RespPage, error)
 	CorrelationFlowList(ctx context.Context, req *CorrelationFlowReq) ([]*models.Flow, error)
 	DeleteApp(ctx context.Context, req *DeleteAppReq) *DeleteAppResp
-	UpdateFlowStatus(ctx context.Context, req *PublishProcessReq, usrID string) (bool, error)
+	UpdateFlowStatus(ctx context.Context, req *PublishProcessReq, usrID string) (*UpdateFlowStatusResp, error)
 	GetNodes(ctx context.Context, ID string) ([]*models.NodeModel, error)
 	GetShapeByProcessID(ctx context.Context, processID, nodeDefKey string) (*convert.ShapeModel, error)
 
@@ -75,6 +90,8 @@ type flow struct {
 	operationRecordRepo   models.OperationRecordRepo
 	urgeRepo              models.UrgeRepo
 	instanceExecutionRepo models.InstanceExecutionRepo
+	dispatcher            client.Dispatcher
+	conf                  *config.Configs
 }
 
 // NewFlow init
@@ -95,6 +112,8 @@ func NewFlow(conf *config.Configs, opts ...options.Options) (Flow, error) {
 		operationRecordRepo:   mysql.NewOperationRecordRepo(),
 		urgeRepo:              mysql.NewUrgeRepo(),
 		instanceExecutionRepo: mysql.NewInstanceExecutionRepo(),
+		dispatcher:            client.NewDispatcher(conf),
+		conf:                  conf,
 	}
 
 	for _, opt := range opts {
@@ -144,7 +163,6 @@ func (f *flow) SaveFlow(ctx context.Context, req *models.Flow, userID string) (*
 			err := error2.NewErrorWithString(error2.Internal, "Cannot edit this flow ")
 			return nil, err
 		}
-
 		req.ModifierID = userID
 		req.Status = models.DISABLE
 
@@ -154,26 +172,30 @@ func (f *flow) SaveFlow(ctx context.Context, req *models.Flow, userID string) (*
 		}
 		return req, nil
 	}
-	shape, err := convert.GetShapeByChartType(req.BpmnText, "formData")
-	if err != nil {
-		return nil, err
+	if req.TriggerMode == "FORM_DATA" {
+		shape, err := convert.GetShapeByChartType(req.BpmnText, "formData")
+		if err != nil {
+			return nil, err
+		}
+		bd := shape.Data.BusinessData
+		var form map[string]interface{}
+		if v := bd["form"]; v != nil {
+			form = v.(map[string]interface{})
+		}
+		if form == nil {
+			return nil, nil
+		}
+		req.FormID = utils.Strval(form["value"])
 	}
-	bd := shape.Data.BusinessData
-	var form map[string]interface{}
-	if v := bd["form"]; v != nil {
-		form = v.(map[string]interface{})
-	}
-	if form == nil {
-		return nil, nil
-	}
+
 	// req.FormID = bd["form"].(map[string]interface{})["value"].(string)
 	req.CreatorID = userID
 	req.ModifierID = userID
 	req.ModifyTime = time2.Now()
 	req.Status = models.DISABLE
-	req.FormID = utils.Strval(form["value"])
+
 	req.AppStatus = mysql.AppActiveStatus
-	err = f.flowRepo.Create(f.db, req)
+	err := f.flowRepo.Create(f.db, req)
 	if err != nil {
 		return nil, err
 	}
@@ -210,6 +232,18 @@ func (f *flow) DeleteFlow(ctx context.Context, flowID string, userID string) (bo
 	err = f.variablesRepo.DeleteByFlowID(tx, flowID)
 	if err != nil {
 		return false, err
+	}
+	// 如果是定时的将任务注册或删除调度器
+	if flow.TriggerMode == convert.FormTime {
+		code := fmt.Sprintf("flow:%s_%s", convert.CallbackOfCron, flow.ID)
+		req := client.UpdateTaskStateReq{
+			Code:  code,
+			State: 2,
+		}
+		err1 := f.dispatcher.UpdateState(ctx, req)
+		if err1 != nil {
+			logger.Logger.Error("update dispatcher state err,", err1)
+		}
 	}
 
 	return true, nil
@@ -644,6 +678,18 @@ func (f *flow) deleteFlowByAppID(ctx context.Context, appID string) error {
 		if flow.SourceID == "" {
 			processIDs = append(processIDs, flow.ID)
 		}
+		// 如果是定时的将任务注册或删除调度器
+		if flow.TriggerMode == convert.FormTime {
+			code := fmt.Sprintf("flow:%s_%s", convert.CallbackOfCron, flow.ID)
+			req := client.UpdateTaskStateReq{
+				Code:  code,
+				State: 2,
+			}
+			err1 := f.dispatcher.UpdateState(ctx, req)
+			if err1 != nil {
+				logger.Logger.Error("update dispatcher state err,", err1)
+			}
+		}
 
 	}
 	instanceIDs := make([]string, len(instances))
@@ -748,12 +794,19 @@ func (f *flow) RefreshRule(ctx context.Context) (bool bool, err error) {
 			if err != nil {
 				return false, err
 			}
-			ftr := &models.TriggerRule{
-				Rule:   string(rule),
-				FlowID: s.ID,
-				FormID: s.FormID,
+			ruleOne, err := f.triggerRuleRepo.FindByFormIDAndDFlowID(f.db, s.FormID, s.ID)
+			if err != nil {
+				return false, err
 			}
-			f.triggerRuleRepo.Create(tx, ftr)
+			if ruleOne == nil {
+				ftr := &models.TriggerRule{
+					Rule:   string(rule),
+					FlowID: s.ID,
+					FormID: s.FormID,
+				}
+				f.triggerRuleRepo.Create(tx, ftr)
+			}
+
 		}
 
 	}
@@ -761,7 +814,12 @@ func (f *flow) RefreshRule(ctx context.Context) (bool bool, err error) {
 	return true, err
 }
 
-func (f *flow) UpdateFlowStatus(ctx context.Context, req *PublishProcessReq, usrID string) (bool bool, err error) {
+type UpdateFlowStatusResp struct {
+	Flag        bool
+	TriggerMode string
+}
+
+func (f *flow) UpdateFlowStatus(ctx context.Context, req *PublishProcessReq, usrID string) (resp *UpdateFlowStatusResp, err error) {
 	tx := f.db.Begin()
 
 	fl, err := f.flowRepo.FindByID(tx, req.ID)
@@ -770,12 +828,16 @@ func (f *flow) UpdateFlowStatus(ctx context.Context, req *PublishProcessReq, usr
 			tx.Rollback()
 		}
 	}()
+	flowStatusResp := &UpdateFlowStatusResp{}
+	flowStatusResp.TriggerMode = fl.TriggerMode
 	if err != nil {
-		return false, err
+		flowStatusResp.Flag = false
+		return flowStatusResp, err
 	}
 	if fl == nil {
 		err = error2.NewErrorWithString(error2.Internal, "Process is not exists ")
-		return false, err
+		flowStatusResp.Flag = false
+		return flowStatusResp, err
 	}
 	fl.ModifierID = usrID
 	fl.ModifyTime = time2.Now()
@@ -784,64 +846,113 @@ func (f *flow) UpdateFlowStatus(ctx context.Context, req *PublishProcessReq, usr
 	if models.ENABLE == req.Status {
 		if fl.BpmnText == "" {
 			err = error2.NewErrorWithString(error2.Internal, "Process chart is nil ")
-			return false, err
+			flowStatusResp.Flag = false
+			return flowStatusResp, err
 		}
-		s, err := convert.GetShapeByChartType(fl.BpmnText, convert.FormData)
-		if err != nil {
-			return false, err
-		}
-		if err = checkChartJSON(s); err != nil {
-			return false, err
+		if fl.TriggerMode == "FORM_DATA" {
+			// 找到form节点对应的数据
+			s, err := convert.GetShapeByChartType(fl.BpmnText, convert.FormData)
+			if err != nil {
+				flowStatusResp.Flag = false
+				return flowStatusResp, err
+			}
+			if err = checkChartJSON(s); err != nil {
+				flowStatusResp.Flag = false
+				return flowStatusResp, err
+			}
+			formID := s.Data.BusinessData["form"].(map[string]interface{})["value"].(string)
+			fl.FormID = formID
+
+			// add new trigger rule
+			rule, err := json.Marshal(s.Data.BusinessData)
+			if err != nil {
+				flowStatusResp.Flag = false
+				return flowStatusResp, err
+			}
+			ruleOne, err := f.triggerRuleRepo.FindByFormIDAndDFlowID(f.db, fl.ID, s.ID)
+			if err != nil {
+				flowStatusResp.Flag = false
+				return flowStatusResp, err
+			}
+			if ruleOne == nil {
+				ftr := &models.TriggerRule{
+					Rule:   string(rule),
+					FlowID: fl.ID,
+					FormID: fl.FormID,
+				}
+				if err = f.triggerRuleRepo.Create(tx, ftr); err != nil {
+					flowStatusResp.Flag = false
+					return flowStatusResp, err
+				}
+			}
+
 		}
 
 		// deploy
 		processID, formulaFields, err := f.deploy(ctx, fl)
 		if err != nil {
-			return false, err
+			flowStatusResp.Flag = false
+			return flowStatusResp, err
 		}
 		if processID == "" {
-			return false, error2.NewErrorWithString(error2.Internal, "Deployment failed")
+			flowStatusResp.Flag = false
+			return flowStatusResp, error2.NewErrorWithString(error2.Internal, "Deployment failed")
 		}
-		formID := s.Data.BusinessData["form"].(map[string]interface{})["value"].(string)
-		fl.FormID = formID
+
 		fl.ProcessID = processID
 		err = f.flowRepo.UpdateFlow(tx, fl)
 		if err != nil {
-			return false, err
+			flowStatusResp.Flag = false
+			return flowStatusResp, err
 		}
-		// add new record
-		fl.SourceID = fl.ID
+		//// add new record
+		//fl.SourceID = fl.ID
 		originalID := fl.ID
-		fl.ID = id2.GenID()
-		if err = f.flowRepo.Create(f.db, fl); err != nil {
-			return false, err
-		}
-		// add new trigger rule
-		rule, err := json.Marshal(s.Data.BusinessData)
-		if err != nil {
-			return false, err
-		}
-		ftr := &models.TriggerRule{
-			Rule:   string(rule),
-			FlowID: fl.ID,
-			FormID: fl.FormID,
-		}
-		if err = f.triggerRuleRepo.Create(tx, ftr); err != nil {
-			return false, err
-		}
+		//fl.ID = id2.GenID()
+		//if err = f.flowRepo.Create(f.db, fl); err != nil {
+		//	flowStatusResp.Flag = false
+		//	return flowStatusResp, err
+		//}
+
 		// sync variable list
 		variables, err := f.variablesRepo.FindVariables(f.db, map[string]interface{}{
 			"flow_id": originalID,
 		})
 		if err != nil {
-			return false, err
+			flowStatusResp.Flag = false
+			return flowStatusResp, err
 		}
 		if len(variables) > 0 {
 			for _, v := range variables {
 				v.FlowID = fl.ID
 				v.ID = id2.GenID()
 				if err = f.variablesRepo.Create(f.db, v); err != nil {
-					return false, err
+					flowStatusResp.Flag = false
+					return flowStatusResp, err
+				}
+			}
+		}
+		// 如果是定时的将任务注册或删除调度器
+		if fl.TriggerMode == convert.FormTime {
+			code := fmt.Sprintf("flow:%s_%s", convert.CallbackOfCron, req.ID)
+			req := client.TaskPostReq{
+				Code:    code,
+				Title:   "cron_" + fl.Name,
+				Type:    2,
+				TimeBar: fl.Cron,
+				State:   1,
+			}
+			err1 := f.dispatcher.TakePost(ctx, req)
+			if err1 != nil {
+				logger.Logger.Error("register dispatcher err,", err1)
+				code := fmt.Sprintf("flow:%s_%s", convert.CallbackOfCron, fl.ID)
+				dispReq := client.UpdateTaskStateReq{
+					Code:  code,
+					State: 1,
+				}
+				err1 := f.dispatcher.UpdateState(ctx, dispReq)
+				if err1 != nil {
+					logger.Logger.Error("unable flow update dispatcher state err,", err1)
 				}
 			}
 		}
@@ -866,12 +977,26 @@ func (f *flow) UpdateFlowStatus(ctx context.Context, req *PublishProcessReq, usr
 	} else {
 		err := f.flowRepo.UpdateFlow(tx, fl)
 		if err != nil {
-			return false, err
+			flowStatusResp.Flag = false
+			return flowStatusResp, err
 		}
 		f.updateFlowHistory(tx, fl.ID, usrID)
+		// 如果是定时的将任务注册或删除调度器
+		if fl.TriggerMode == convert.FormTime {
+			code := fmt.Sprintf("flow:%s_%s", convert.CallbackOfCron, fl.ID)
+			dispReq := client.UpdateTaskStateReq{
+				Code:  code,
+				State: 2,
+			}
+			err1 := f.dispatcher.UpdateState(ctx, dispReq)
+			if err1 != nil {
+				logger.Logger.Error("unable flow update dispatcher state err,", err1)
+			}
+		}
 	}
 	tx.Commit()
-	return true, nil
+	flowStatusResp.Flag = true
+	return flowStatusResp, err
 }
 
 func checkChartJSON(s *convert.ShapeModel) error {
@@ -962,7 +1087,7 @@ func (f *flow) GetTaskHandleUserIDs2(ctx context.Context, approvePersonsStr inte
 	// 人员'person' | 表单字段'field' | 岗位'position' | 上级领导'superior' | 部门负责人'leadOfDepartment' | 发起人processInitiator
 	handleUserIds := make([]string, 0) // all handle users
 	assigneeList := make([]string, 0)  // dynamic handle users
-	if "field" == approvePersons.Type {
+	if convert.EmailTypeOfField == approvePersons.Type || convert.EmailTypeOfMultipleField == approvePersons.Type {
 		if len(approvePersons.Fields) > 0 {
 			condition := client.FormDataConditionModel{
 				AppID:   flowInstanceEntity.AppID,
@@ -988,7 +1113,7 @@ func (f *flow) GetTaskHandleUserIDs2(ctx context.Context, approvePersonsStr inte
 				}
 			}
 		}
-	} else if "superior" == approvePersons.Type {
+	} else if convert.EmailTypeOfSuperior == approvePersons.Type {
 		userID, err := f.identityAPI.GetSuperior(ctx, flowInstanceEntity.ApplyUserID)
 		if err != nil {
 			return nil, nil
@@ -997,7 +1122,7 @@ func (f *flow) GetTaskHandleUserIDs2(ctx context.Context, approvePersonsStr inte
 		if len(userID) > 0 {
 			assigneeList = append(assigneeList, userID)
 		}
-	} else if "leadOfDepartment" == approvePersons.Type {
+	} else if convert.EmailTypeOfLeadOfDepartment == approvePersons.Type {
 		userID, err := f.identityAPI.GetLeadOfDepartment(ctx, flowInstanceEntity.ApplyUserID)
 		if err != nil {
 			return nil, nil
@@ -1006,9 +1131,9 @@ func (f *flow) GetTaskHandleUserIDs2(ctx context.Context, approvePersonsStr inte
 		if len(userID) > 0 {
 			assigneeList = append(assigneeList, userID)
 		}
-	} else if "processInitiator" == approvePersons.Type {
+	} else if convert.EmailTypeOfProcessInitiator == approvePersons.Type {
 		assigneeList = append(assigneeList, flowInstanceEntity.ApplyUserID)
-	} else if "person" == approvePersons.Type {
+	} else if convert.EmailTypeOfPerson == approvePersons.Type {
 		if len(approvePersons.Users) > 0 {
 			for _, user := range approvePersons.Users {
 				handleUserIds = append(handleUserIds, user["id"].(string))
@@ -1252,9 +1377,9 @@ func (f *flow) AppReplicationImport(ctx context.Context, req *AppReplicationImpo
 	for _, flow := range flows {
 		// replace variables
 		flow.BpmnText = strings.Replace(flow.BpmnText, flow.AppID, req.AppID, -1)
-		for k, v := range req.FormID {
-			flow.BpmnText = strings.Replace(flow.BpmnText, k, v, -1)
-		}
+		// for k, v := range req.FormID {
+		// 	flow.BpmnText = strings.Replace(flow.BpmnText, k, v, -1)
+		// }
 
 		s, err := convert.GetShapeByChartType(flow.BpmnText, convert.FormData)
 		if err != nil {
@@ -1305,18 +1430,23 @@ func (f *flow) AppReplicationImport(ctx context.Context, req *AppReplicationImpo
 			if err != nil {
 				continue
 			}
-			ruleStr := string(rule)
-			ftr := &models.TriggerRule{
-				Rule:   ruleStr,
-				FlowID: flow.ID,
-				FormID: formID,
-			}
-			ftr.CreatorID = userID
-			ftr.CreateTime = time2.Now()
-			if err = f.triggerRuleRepo.Create(tx, ftr); err != nil {
+			ruleOne, err := f.triggerRuleRepo.FindByFormIDAndDFlowID(f.db, flow.ID, s.ID)
+			if err != nil {
 				continue
 			}
-
+			if ruleOne == nil {
+				ruleStr := string(rule)
+				ftr := &models.TriggerRule{
+					Rule:   ruleStr,
+					FlowID: flow.ID,
+					FormID: formID,
+				}
+				ftr.CreatorID = userID
+				ftr.CreateTime = time2.Now()
+				if err = f.triggerRuleRepo.Create(tx, ftr); err != nil {
+					continue
+				}
+			}
 			// sync variable list
 			for _, variable := range flow.Variables {
 				if variable.Type == "CUSTOM" {
@@ -1411,7 +1541,7 @@ type AppReplicationExportReq struct {
 
 // AppReplicationImportReq 应用复制导出入参
 type AppReplicationImportReq struct {
-	AppID  string            `json:"appID"`
-	FormID map[string]string `json:"formID"`
-	Flows  string            `json:"flows"`
+	AppID string `json:"appID"`
+	// FormID map[string]string `json:"formID"`
+	Flows string `json:"flows"`
 }
