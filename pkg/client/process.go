@@ -1,3 +1,16 @@
+/*
+Copyright 2022 QuanxiangCloud Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package client
 
 import (
@@ -54,6 +67,8 @@ type Process interface {
 	InclusiveExecution(ctx context.Context, req ParentExecutionReq) (*ParentExecutionResp, error)
 
 	UpdateAppStatus(ctx context.Context, processDefKeys []string, action string) error
+	CompleteNode(ctx context.Context, req *CompleteNodeReq) error
+	NodeInstanceList(ctx context.Context, req *NodeInstanceListReq) ([]*ProcessNodeInstanceVO, error)
 }
 
 type process struct {
@@ -583,6 +598,23 @@ func (p *process) UpdateAppStatus(ctx context.Context, processDefKeys []string, 
 	return POST(ctx, &p.client, url, req, resp)
 }
 
+// CompleteNode 延时节点触发调用
+func (p *process) CompleteNode(ctx context.Context, req *CompleteNodeReq) error {
+	resp := &CompleteNodeResp{}
+	url := fmt.Sprintf("%s%s", p.conf.APIHost.ProcessHost, "api/v1/process/completeNode")
+	return POST(ctx, &p.client, url, req, resp)
+}
+
+func (p *process) NodeInstanceList(ctx context.Context, req *NodeInstanceListReq) ([]*ProcessNodeInstanceVO, error) {
+	var resp []*ProcessNodeInstanceVO
+	url := fmt.Sprintf("%s%s", p.conf.APIHost.ProcessHost, "api/v1/process/nodeInstanceList")
+	err := POST(ctx, &p.client, url, req, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // AppDelReq add delete update app status
 type AppDelReq struct {
 	AppDefKey []string `json:"defKey"`
@@ -810,43 +842,44 @@ type QueryOrder struct {
 
 // ProcessTask process task model
 type ProcessTask struct {
-	ID              string
-	ProcID          string
-	ProcInstanceID  string
-	ExecutionID     string
-	NodeID          string
-	NodeDefKey      string
-	NextNodeDefKey  string
-	Name            string
-	Desc            string // 例如：审批、填写、抄送、阅示
-	TaskType        string // Model模型任务、TempModel临时模型任务、NonModel非模型任务
-	Assignee        string
-	Status          string // COMPLETED, ACTIVE，DELETED
-	DueTime         string
-	EndTime         string
-	CreatorID       string
-	CreateTime      string
-	ModifierID      string
-	ModifyTime      string
-	TenantID        string
-	NodeInstanceID  string
-	NodeInstancePid string
-	Comments        string
+	ID              string `json:"id"`
+	ProcID          string `json:"procId"`
+	ProcInstanceID  string `json:"procInstanceId"`
+	ExecutionID     string `json:"executionId"`
+	NodeID          string `json:"nodeId"`
+	NodeDefKey      string `json:"nodeDefKey"`
+	NextNodeDefKey  string `json:"nextNodeDefKey"`
+	Name            string `json:"name"`
+	Desc            string `json:"desc"`     // 例如：审批、填写、抄送、阅示
+	TaskType        string `json:"taskType"` // Model模型任务、TempModel临时模型任务、NonModel非模型任务
+	Assignee        string `json:"assignee"`
+	Status          string `json:"status"` // COMPLETED, ACTIVE
+	DueTime         string `json:"dueTime"`
+	EndTime         string `json:"endTime"`
+	CreatorID       string `json:"creatorId"`
+	CreateTime      string `json:"createTime"`
+	ModifierID      string `json:"modifierId"`
+	ModifyTime      string `json:"modifyTime"`
+	Comments        string `json:"comments"`
+	TenantID        string `json:"tenantId"`
+	NodeInstanceID  string `json:"tenantId"`
+	NodeInstancePid string `json:"tenantId"`
 }
 
 // ProcessInstance info
 type ProcessInstance struct {
-	ID         string
-	ProcID     string
-	Name       string
-	PID        string
-	Status     string // COMPLETED, ACTIVE，TERMINATED
-	EndTime    string
-	CreatorID  string
-	CreateTime string
-	ModifierID string
-	ModifyTime string
-	TenantID   string
+	ID         string `json:"id"`
+	ProcID     string `json:"procId"`
+	Name       string `json:"name"`
+	PID        string `json:"pId"`
+	Status     string `json:"status"`    // COMPLETED, ACTIVE
+	AppStatus  string `json:"appStatus"` // ACTIVE,SUSPEND
+	EndTime    string `json:"endTime"`
+	CreatorID  string `json:"creatorId"`
+	CreateTime string `json:"createTime"`
+	ModifierID string `json:"modifierId"`
+	ModifyTime string `json:"modifyTime"`
+	TenantID   string `json:"tenantId"`
 }
 
 // GetInstancesReq req
@@ -877,19 +910,20 @@ type GetInstancesResp struct {
 
 // Node info
 type Node struct {
-	ID         string
-	ProcID     string
-	Name       string
-	DefKey     string
-	NodeType   string // Start、End、User、MultiUser、Service、Script、ParallelGateway、InclusiveGateway、SubProcess
-	SubProcID  string // Type is SubProcess
-	PairDefKey string // ParallelGateway < == > InclusiveGateway
-	Desc       string
-	CreatorID  string
-	CreateTime string
-	ModifierID string
-	ModifyTime string
-	TenantID   string
+	ID             string `json:"id"`
+	ProcID         string `json:"procId"`
+	ProcInstanceID string `json:"procInstanceId"`
+	Name           string `json:"name"`
+	DefKey         string `json:"defKey"`
+	NodeType       string `json:"nodeType"`   // Start、End、User、MultiUser、Service、Script、ParallelGateway、InclusiveGateway、SubProcess
+	SubProcID      string `json:"subProcId"`  // Type is SubProcess
+	PairDefKey     string `json:"pairDefKey"` // ParallelGateway < == > InclusiveGateway
+	Desc           string `json:"desc"`
+	CreatorID      string `json:"creatorId"`
+	CreateTime     string `json:"createTime"`
+	ModifierID     string `json:"modifierId"`
+	ModifyTime     string `json:"modifyTime"`
+	TenantID       string `json:"tenantId"`
 }
 
 // NodeInfo NodeInfo
@@ -913,4 +947,49 @@ type ParentExecutionReq struct {
 // ParentExecutionResp ParentExecutionResp
 type ParentExecutionResp struct {
 	ExecutionID string `json:"executionID"`
+}
+
+// CompleteNodeReq process延时节点回调请求
+type CompleteNodeReq struct {
+	ProcessID   string                 `json:"processID" binding:"required"`
+	InstanceID  string                 `json:"instanceID" binding:"required"`
+	NodeDefKey  string                 `json:"nodeDefKey" binding:"required"`
+	ExecutionID string                 `json:"executionID" binding:"required"`
+	NextNodes   string                 `json:"nextNodes"`
+	Params      map[string]interface{} `json:"params"`
+	UserID      string                 `json:"userID"`
+}
+
+// CompleteNodeResp 延时节点响应
+type CompleteNodeResp struct {
+}
+
+// NodeInstanceListReq req
+type NodeInstanceListReq struct {
+	ProcInstanceID string `json:"procInstanceId"`
+}
+
+// ProcessNodeInstance entity
+type ProcessNodeInstance struct {
+	ID             string `json:"id"`
+	ProcID         string `json:"procId"`
+	ProcInstanceID string `json:"procInstanceId"`
+	PID            string `json:"pId"`
+	ExecutionID    string `json:"executionId"`
+	NodeDefKey     string `json:"nodeDefKey"`
+	NodeName       string `json:"nodeName"`
+	NodeType       string `json:"nodeType"`
+	TaskID         string `json:"taskId"`
+	Comments       string `json:"comments"`
+	CreatorID      string `json:"creatorId"`
+	CreateTime     string `json:"createTime"`
+	ModifierID     string `json:"modifierId"`
+	ModifyTime     string `json:"modifyTime"`
+	TenantID       string `json:"tenantId"`
+}
+
+// ProcessNodeInstanceVO vo
+type ProcessNodeInstanceVO struct {
+	*ProcessNodeInstance
+	Assignee string `json:"assignee"`
 }

@@ -1,3 +1,16 @@
+/*
+Copyright 2022 QuanxiangCloud Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package mysql
 
 import (
@@ -35,7 +48,7 @@ func (r *dispatcherCallbackRepo) Update(db *gorm.DB, ID string, updateMap map[st
 	return err
 }
 
-// DeleteByID delete model
+// Delete delete model
 func (r *dispatcherCallbackRepo) Delete(db *gorm.DB, ID string) error {
 	entity := &models.DispatcherCallback{BaseModel: models.BaseModel{
 		ID: ID,

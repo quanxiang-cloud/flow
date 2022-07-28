@@ -1,9 +1,23 @@
-package flow
+/*
+Copyright 2022 QuanxiangCloud Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package callback_tasks
 
 import (
 	"context"
 	"encoding/json"
 	"github.com/quanxiang-cloud/flow/internal/convert"
+	flow2 "github.com/quanxiang-cloud/flow/internal/flow"
 	"github.com/quanxiang-cloud/flow/internal/models"
 	"github.com/quanxiang-cloud/flow/internal/models/mysql"
 	"github.com/quanxiang-cloud/flow/internal/server/options"
@@ -22,75 +36,55 @@ const (
 	jump         = "jump"
 )
 
-const (
-	firstEntry = "firstEntry"
-	entry      = "entry"
-	flowWorked = "flowWorked"
-)
-
-// urge type
-const (
-	DEADLINE = "DEADLINE"
-	URGE     = "URGE"
-)
-
 // Urge info
-type Urge interface {
-	UrgingExecute(ctx context.Context, code string) error
+//type Urge interface {
+//	UrgingExecute(ctx context.Context, code string) error
+//
+//	TaskUrge(ctx context.Context, req *TaskUrgeModel) error
+//}
 
-	TaskUrge(ctx context.Context, req *TaskUrgeModel) error
-}
-
-type urge struct {
-	db                     *gorm.DB
-	processAPI             client.Process
-	formAPI                client.Form
-	dispatcherCallbackRepo models.DispatcherCallbackRepo
-	dispatcherAPI          client.Dispatcher
-	urgeRepo               models.UrgeRepo
-	flowRepo               models.FlowRepo
-	instanceRepo           models.InstanceRepo
-	task                   Task
-	flow                   Flow
-	instance               Instance
-	operationRecord        OperationRecord
+type Urge struct {
+	C
 }
 
 // NewUrge init
-func NewUrge(conf *config.Configs, opts ...options.Options) (Urge, error) {
-	task, _ := NewTask(conf, opts...)
-	flow, _ := NewFlow(conf, opts...)
-	instance, _ := NewInstance(conf, opts...)
-	operationRecord, _ := NewOperationRecord(conf, opts...)
-	u := &urge{
-		processAPI:             client.NewProcess(conf),
-		formAPI:                client.NewForm(conf),
-		dispatcherCallbackRepo: mysql.NewDispatcherCallbackRepo(),
-		dispatcherAPI:          client.NewDispatcher(conf),
-		urgeRepo:               mysql.NewUrgeRepo(),
-		instanceRepo:           mysql.NewInstanceRepo(),
-		flowRepo:               mysql.NewFlowRepo(),
-		task:                   task,
-		flow:                   flow,
-		instance:               instance,
-		operationRecord:        operationRecord,
-	}
+func NewUrge(conf *config.Configs, opts ...options.Options) (*Urge, error) {
+	var u Urge
+	task, _ := flow2.NewTask(conf, opts...)
+	flow, _ := flow2.NewFlow(conf, opts...)
+	instance, _ := flow2.NewInstance(conf, opts...)
+	operationRecord, _ := flow2.NewOperationRecord(conf, opts...)
+
+	u.processAPI = client.NewProcess(conf)
+	u.formAPI = client.NewForm(conf)
+	u.dispatcherCallbackRepo = mysql.NewDispatcherCallbackRepo()
+	u.dispatcherAPI = client.NewDispatcher(conf)
+	u.urgeRepo = mysql.NewUrgeRepo()
+	u.instanceRepo = mysql.NewInstanceRepo()
+	u.flowRepo = mysql.NewFlowRepo()
+	u.task = task
+	u.flow = flow
+	u.instance = instance
+	u.operationRecord = operationRecord
+
 	for _, opt := range opts {
-		opt(u)
+		opt(&u)
 	}
-	return u, nil
+	return &u, nil
 }
 
 // SetDB set db
-func (u *urge) SetDB(db *gorm.DB) {
+func (u *Urge) SetDB(db *gorm.DB) {
 	u.db = db
 }
 
-func (u *urge) Transaction() *gorm.DB {
-	return u.db.Begin()
+// Execute 处理事件
+func (u *Urge) Execute(ctx context.Context, code *string) error {
+	return u.UrgingExecute(ctx, *code)
+
 }
 
-func (u *urge) TaskUrge(ctx context.Context, req *TaskUrgeModel) error {
+func (u *Urge) TaskUrge(ctx context.Context, req *TaskUrgeModel) error {
 	userID := pkg.STDUserID(ctx)
 	flowInstanceEntity, err := u.instanceRepo.GetEntityByProcessInstanceID(u.db, req.ProcessInstanceID)
 	if err != nil {
@@ -107,7 +101,7 @@ func (u *urge) TaskUrge(ctx context.Context, req *TaskUrgeModel) error {
 	if flowEntity == nil {
 		return error2.NewErrorWithString(error2.Internal, "Can not find flow data ")
 	}
-	if !(flowEntity.CanUrge == 1 && isFlowOngoing(flowInstanceEntity.Status)) {
+	if !(flowEntity.CanUrge == 1 && flow2.IsFlowOngoing(flowInstanceEntity.Status)) {
 		return error2.NewErrorWithString(error2.Internal, "Can not urge this instance ")
 	}
 
@@ -143,14 +137,7 @@ func (u *urge) TaskUrge(ctx context.Context, req *TaskUrgeModel) error {
 	return nil
 }
 
-// DispatcherCallOtherInfo struct
-type DispatcherCallOtherInfo struct {
-	FlowInstanceID string `json:"flowInstanceId"`
-	TaskID         string `json:"TaskID"`
-	TaskDefKey     string `json:"taskDefKey"`
-}
-
-func (u *urge) UrgingExecute(ctx context.Context, code string) error {
+func (u *Urge) UrgingExecute(ctx context.Context, code string) error {
 	ctx = pkg.RPCCTXTransfer("", "")
 	if code == "" {
 		return error2.NewErrorWithString(error2.Internal, "code is nil")
@@ -160,17 +147,17 @@ func (u *urge) UrgingExecute(ctx context.Context, code string) error {
 		return err
 	}
 	switch d.Type {
-	case URGE:
+	case flow2.URGE:
 		err = u.urge(ctx, *d)
-	case DEADLINE:
+	case flow2.DEADLINE:
 		err = u.dealLine(ctx, *d)
 	}
 	return err
 }
 
-func (u *urge) urge(ctx context.Context, callback models.DispatcherCallback) error {
-	tx := u.Transaction()
-	otherInfo := &DispatcherCallOtherInfo{}
+func (u *Urge) urge(ctx context.Context, callback models.DispatcherCallback) error {
+	tx := u.db.Begin()
+	otherInfo := &flow2.DispatcherCallOtherInfo{}
 	err := json.Unmarshal([]byte(callback.OtherInfo), otherInfo)
 	if err != nil {
 		return err
@@ -200,9 +187,9 @@ func (u *urge) urge(ctx context.Context, callback models.DispatcherCallback) err
 	return nil
 }
 
-func (u *urge) dealLine(ctx context.Context, callback models.DispatcherCallback) error {
-	tx := u.Transaction()
-	otherInfo := &DispatcherCallOtherInfo{}
+func (u *Urge) dealLine(ctx context.Context, callback models.DispatcherCallback) error {
+	tx := u.db.Begin()
+	otherInfo := &flow2.DispatcherCallOtherInfo{}
 	err := json.Unmarshal([]byte(callback.OtherInfo), otherInfo)
 	if err != nil {
 		return err
@@ -272,11 +259,11 @@ func (u *urge) dealLine(ctx context.Context, callback models.DispatcherCallback)
 		if err != nil {
 			return err
 		}
-		if processInstance != nil && processInstance.Status != Active {
+		if processInstance != nil && processInstance.Status != flow2.Active {
 			// 说明此时流程结束了
 			dataMap := make(map[string]interface{})
 			dataMap["modifier_id"] = pkg.STDUserID(ctx)
-			dataMap["status"] = Agree
+			dataMap["status"] = flow2.Agree
 			err = u.instanceRepo.Update(u.db, instance.ID, dataMap)
 			if err != nil {
 				return err
@@ -289,13 +276,13 @@ func (u *urge) dealLine(ctx context.Context, callback models.DispatcherCallback)
 		}
 
 		comments := map[string]interface{}{
-			"reviewResult": Agree,
+			"reviewResult": flow2.Agree,
 			"reviewRemark": "",
 		}
 		u.processAPI.CompleteTaskToNode(ctx, instance.ProcessInstanceID, tasksResp.Data[0].ID, params, timeOut.Value, comments)
 
 		model := &models.HandleTaskModel{
-			HandleType: OpAutoSkip,
+			HandleType: flow2.OpAutoSkip,
 			HandleDesc: "该节点超时未处理，已跳转到指定节点",
 		}
 

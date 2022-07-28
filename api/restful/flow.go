@@ -1,3 +1,16 @@
+/*
+Copyright 2022 QuanxiangCloud Authors
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+     http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package restful
 
 import (
@@ -16,7 +29,9 @@ import (
 
 // Flow info
 type Flow struct {
-	flow flow.Flow
+	flow     flow.Flow
+	trigger  flow.Trigger
+	instance flow.Instance
 }
 
 // NewFlow new flow
@@ -26,8 +41,19 @@ func NewFlow(c *config.Configs, opts ...options.Options) (*Flow, error) {
 		return nil, err
 	}
 
+	t, err := flow.NewTrigger(c, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	instance, err := flow.NewInstance(c, opts...)
+	if err != nil {
+		return nil, err
+	}
 	return &Flow{
-		flow: f,
+		flow:     f,
+		trigger:  t,
+		instance: instance,
 	}, nil
 }
 
@@ -169,7 +195,20 @@ func (f *Flow) updateFlowStatus(ctx *gin.Context) {
 		return
 	}
 	profile := header2.GetProfile(ctx)
-	resp.Format(f.flow.UpdateFlowStatus(pkg.CTXTransfer(ctx), req, profile.UserID)).Context(ctx)
+	res, err := f.flow.UpdateFlowStatus(pkg.CTXTransfer(ctx), req, profile.UserID)
+	//if res.Flag && req.Status == "ENABLE" && res.TriggerMode == "FORM_TIME" {
+	//	startFlowModel := &flow.StartFlowModel{
+	//		FlowID:   req.ID,
+	//		FormData: nil,
+	//		UserID:   profile.UserID,
+	//	}
+	//	_, err := f.instance.StartFlow(ctx, startFlowModel)
+	//	if err != nil {
+	//		logger.Logger.Error("enable flow err,", err)
+	//	}
+	//}
+	resp.Format(res.Flag, err).Context(ctx)
+
 }
 
 func (f *Flow) appReplicationExport(ctx *gin.Context) {
@@ -189,4 +228,13 @@ func (f *Flow) appReplicationImport(ctx *gin.Context) {
 	}
 	profile := header2.GetProfile(ctx)
 	resp.Format(f.flow.AppReplicationImport(pkg.CTXTransfer(ctx), req, profile.UserID)).Context(ctx)
+}
+
+func (f *Flow) triggerFlow(ctx *gin.Context) {
+	req := &flow.FormMsg{}
+	if err := ctx.ShouldBind(req); err != nil {
+		ctx.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+	resp.Format(nil, f.trigger.MessageTrigger(req)).Context(ctx)
 }
