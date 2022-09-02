@@ -43,6 +43,417 @@ func NewWebHook(conf *config.Configs, node *Node) *WebHook {
 
 // InitBegin event
 func (n *WebHook) InitBegin(ctx context.Context, eventData *EventData) (*pb.NodeEventRespData, error) {
+	//if !n.CheckRefuse(ctx, n.Db, eventData.ProcessID) {
+	//	return nil, nil
+	//}
+	//flow, err := n.FlowRepo.FindByProcessID(n.Db, eventData.ProcessID)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//// do req
+	//queryFlag := false
+	//requestBody := make(map[string]interface{})
+	//requestHeader := make(map[string]string) // req header
+	//path := ""
+	//bd := eventData.Shape.Data.BusinessData
+	//if bd == nil {
+	//	return nil, nil
+	//}
+	//hookType := utils.Strval(bd["type"])
+	//var conf map[string]interface{}
+	//if v := bd["config"]; v != nil {
+	//	conf = v.(map[string]interface{})
+	//}
+	//var inputs []convert.Input
+	//if v := conf["inputs"]; v != nil {
+	//	arr := v.([]interface{})
+	//	for _, e := range arr {
+	//		marshal, err := json.Marshal(e)
+	//		if err != nil {
+	//			return nil, err
+	//		}
+	//
+	//		input := convert.Input{}
+	//		err = json.Unmarshal(marshal, &input)
+	//		if err != nil {
+	//			return nil, err
+	//		}
+	//		inputs = append(inputs, input)
+	//	}
+	//}
+	//v := url.Values{}
+	//if flow.TriggerMode == "FORM_DATA" {
+	//	formShape, err := convert.GetShapeByChartType(flow.BpmnText, convert.FormData)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	formDefKey := formShape.ID
+	//
+	//	instance, err := n.InstanceRepo.GetEntityByProcessInstanceID(n.Db, eventData.ProcessInstanceID)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//
+	//	variables, err := n.Instance.GetInstanceVariableValues(ctx, instance)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//
+	//	dataReq := client.FormDataConditionModel{
+	//		AppID:   instance.AppID,
+	//		TableID: instance.FormID,
+	//		DataID:  instance.FormInstanceID,
+	//	}
+	//	dataResp, err := n.FormAPI.GetFormData(ctx, dataReq)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	if dataResp == nil {
+	//		return nil, nil
+	//	}
+	//
+	//	for k, v := range dataResp {
+	//		variables[k] = v
+	//	}
+	//
+	//	// gen req
+	//
+	//	if hookType == "request" {
+	//		var api map[string]interface{}
+	//		if v := conf["api"]; v != nil {
+	//			api = v.(map[string]interface{})
+	//		}
+	//		path = utils.Strval(api["value"])
+	//	} else {
+	//		path = utils.Strval(conf["sendUrl"])
+	//	}
+	//
+	//	for _, e := range inputs {
+	//		if e.In == convert.Header {
+	//			val, err := n.webHookCal(ctx, e, variables, formDefKey)
+	//			if err != nil {
+	//				return nil, err
+	//			}
+	//			if e.Name != "" {
+	//				requestHeader[e.Name] = utils.Strval(val)
+	//			}
+	//		} else if e.In == convert.Path {
+	//			val, err := n.webHookCal(ctx, e, variables, formDefKey)
+	//			if err != nil {
+	//				return nil, err
+	//			}
+	//			path = strings.Replace(path, e.Name, utils.Strval(val), 1)
+	//		} else if e.In == convert.Query {
+	//			val, err := n.webHookCal(ctx, e, variables, formDefKey)
+	//			if err != nil {
+	//				return nil, err
+	//			}
+	//			queryFlag = true
+	//			if e.Name != "" {
+	//				v.Add(e.Name, utils.Strval(val))
+	//			}
+	//			// path += e.Name + "=" + utils.Strval(val) + "&"
+	//		} else if e.In == convert.Body {
+	//			if e.Type == "object" {
+	//				obj := make(map[string]interface{})
+	//				if v := e.Data; v != nil {
+	//					if reflect.TypeOf(v).Kind() == reflect.Slice {
+	//						arr := v.([]interface{})
+	//						bdata := make(map[string]interface{})
+	//						for _, e1 := range arr {
+	//							marshal, err := json.Marshal(e1)
+	//							if err != nil {
+	//								return nil, err
+	//							}
+	//
+	//							input := convert.Input{}
+	//							err = json.Unmarshal(marshal, &input)
+	//							if err != nil {
+	//								return nil, err
+	//							}
+	//							val, err := n.exchangeParam(ctx, input, nil, "")
+	//							if err != nil {
+	//								return nil, err
+	//							}
+	//							if input.Name != "" {
+	//								bdata[input.Name] = val
+	//							}
+	//
+	//						}
+	//						obj[e.Name] = bdata
+	//						requestBody = obj
+	//					} else {
+	//						// requestBody[e.Name] = e.Data
+	//
+	//						val, err := n.webHookCal(ctx, e, nil, "")
+	//						if err != nil {
+	//							return nil, err
+	//						}
+	//						if e.Name != "" {
+	//							requestBody[e.Name] = utils.Strval(val)
+	//						}
+	//
+	//					}
+	//
+	//				}
+	//			} else {
+	//				if v := e.Data; v != nil {
+	//					if reflect.TypeOf(v).Kind() == reflect.Slice {
+	//						arr := v.([]interface{})
+	//						for _, e := range arr {
+	//							marshal, err := json.Marshal(e)
+	//							if err != nil {
+	//								return nil, err
+	//							}
+	//
+	//							input := convert.Input{}
+	//							err = json.Unmarshal(marshal, &input)
+	//							if err != nil {
+	//								return nil, err
+	//							}
+	//							val, err := n.exchangeParam(ctx, input, variables, formDefKey)
+	//							if err != nil {
+	//								return nil, err
+	//							}
+	//							if input.Name != "" {
+	//								requestBody[input.Name] = val
+	//							}
+	//
+	//						}
+	//					} else {
+	//						// requestBody[e.Name] = e.Data
+	//
+	//						val, err := n.webHookCal(ctx, e, variables, formDefKey)
+	//						if err != nil {
+	//							return nil, err
+	//						}
+	//						if e.Name != "" {
+	//							requestBody[e.Name] = utils.Strval(val)
+	//						}
+	//
+	//					}
+	//
+	//				}
+	//			}
+	//
+	//		}
+	//
+	//	}
+	//} else {
+	//	mp := conf["api"].(map[string]interface{})
+	//	path = mp["value"].(string)
+	//	for _, e := range inputs {
+	//		if e.In == convert.Header {
+	//			val, err := n.webHookCal(ctx, e, nil, "")
+	//			if err != nil {
+	//				return nil, err
+	//			}
+	//			if e.Name != "" {
+	//				requestHeader[e.Name] = utils.Strval(val)
+	//			}
+	//		} else if e.In == convert.Path {
+	//			val, err := n.webHookCal(ctx, e, nil, "")
+	//			if err != nil {
+	//				return nil, err
+	//			}
+	//			path = strings.Replace(path, e.Name, utils.Strval(val), 1)
+	//		} else if e.In == convert.Query {
+	//			val, err := n.webHookCal(ctx, e, nil, "")
+	//			if err != nil {
+	//				return nil, err
+	//			}
+	//			queryFlag = true
+	//			if e.Name != "" {
+	//				v.Add(e.Name, utils.Strval(val))
+	//			}
+	//			// path += e.Name + "=" + utils.Strval(val) + "&"
+	//		} else if e.In == convert.Body {
+	//			if e.Type == "object" {
+	//				if v := e.Data; v != nil {
+	//					if reflect.TypeOf(v).Kind() == reflect.Slice {
+	//						arr := v.([]interface{})
+	//						bdata := make(map[string]interface{})
+	//						for _, e1 := range arr {
+	//							marshal, err := json.Marshal(e1)
+	//							if err != nil {
+	//								return nil, err
+	//							}
+	//
+	//							input := convert.Input{}
+	//							err = json.Unmarshal(marshal, &input)
+	//							if err != nil {
+	//								return nil, err
+	//							}
+	//							val, err := n.exchangeParam(ctx, input, nil, "")
+	//							if err != nil {
+	//								return nil, err
+	//							}
+	//							if input.Name != "" {
+	//								bdata[input.Name] = val
+	//							}
+	//
+	//						}
+	//						requestBody[e.Name] = bdata
+	//					} else {
+	//						// requestBody[e.Name] = e.Data
+	//
+	//						val, err := n.webHookCal(ctx, e, nil, "")
+	//						if err != nil {
+	//							return nil, err
+	//						}
+	//						if e.Name != "" {
+	//							requestBody[e.Name] = utils.FormatValue(utils.Strval(val), e.Type)
+	//						}
+	//
+	//					}
+	//
+	//				}
+	//			} else {
+	//				if v := e.Data; v != nil {
+	//					if reflect.TypeOf(v).Kind() == reflect.Slice {
+	//						arr := v.([]interface{})
+	//						for _, e := range arr {
+	//							marshal, err := json.Marshal(e)
+	//							if err != nil {
+	//								return nil, err
+	//							}
+	//
+	//							input := convert.Input{}
+	//							err = json.Unmarshal(marshal, &input)
+	//							if err != nil {
+	//								return nil, err
+	//							}
+	//							val, err := n.exchangeParam(ctx, input, nil, "")
+	//							if err != nil {
+	//								return nil, err
+	//							}
+	//							if input.Name != "" {
+	//								if val != nil {
+	//									requestBody[input.Name] = utils.Strval(val)
+	//								}
+	//							}
+	//
+	//						}
+	//					} else {
+	//						// requestBody[e.Name] = e.Data
+	//
+	//						val, err := n.webHookCal(ctx, e, nil, "")
+	//						if err != nil {
+	//							return nil, err
+	//						}
+	//						if e.Name != "" {
+	//							if val != nil {
+	//								requestBody[e.Name] = utils.FormatValue(utils.Strval(val), e.Type)
+	//							}
+	//
+	//						}
+	//
+	//					}
+	//
+	//				}
+	//
+	//			}
+	//
+	//		}
+	//
+	//	}
+	//}
+	//
+	//if queryFlag {
+	//	if strings.Contains(path, "?") {
+	//		if v.Encode() != "" {
+	//			path += "&"
+	//			path += v.Encode()
+	//		}
+	//
+	//	} else {
+	//		if v.Encode() != "" {
+	//			path += "?"
+	//			path += v.Encode()
+	//		}
+	//
+	//	}
+	//
+	//}
+	//var method = ""
+	//if hookType == "request" {
+	//	_, ok := requestHeader["Content-Type"]
+	//	if !ok {
+	//		requestHeader["Content-Type"] = "application/json"
+	//	}
+	//	method = utils.Strval(conf["method"])
+	//	resp, err := n.PolyAPI.InnerRequest(ctx, path, requestBody, requestHeader, method)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//	if resp == nil {
+	//		return nil, nil
+	//	}
+	//	apiMap := n.apiMap(resp)
+	//	// save resp
+	//	for k, v := range apiMap {
+	//		code := "$" + eventData.Shape.ID + "." + k
+	//		variable, err := n.InstanceVariablesRepo.FindVariablesByCode(n.Db, eventData.ProcessInstanceID, code)
+	//		if err != nil {
+	//			return nil, err
+	//		}
+	//
+	//		fieldValue, fieldType := utils.StrvalAndType(v)
+	//		if variable.ID != "" {
+	//			if err := n.InstanceVariablesRepo.UpdateTypeAndValue(n.Db, eventData.ProcessInstanceID, code, fieldType, fieldValue); err != nil {
+	//				return nil, err
+	//			}
+	//		} else {
+	//			variable := models.InstanceVariables{
+	//				ProcessInstanceID: eventData.ProcessInstanceID,
+	//				Code:              code,
+	//				FieldType:         fieldType,
+	//				Value:             fieldValue,
+	//			}
+	//			if err := n.InstanceVariablesRepo.Create(n.Db, &variable); err != nil {
+	//				return nil, err
+	//			}
+	//		}
+	//	}
+	//} else if hookType == "send" {
+	//	requestHeader["Content-Type"] = utils.Strval(conf["contentType"])
+	//	_, ok := requestHeader["Content-Type"]
+	//	if !ok {
+	//		requestHeader["Content-Type"] = "application/json"
+	//	}
+	//	method = utils.Strval(conf["sendMethod"])
+	//	_, err := n.PolyAPI.SendRequest(ctx, path, requestBody, requestHeader, method)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//}
+	return nil, nil
+}
+
+func (n *WebHook) apiMap(apiMap map[string]interface{}) map[string]interface{} {
+	ret := make(map[string]interface{})
+	for k, v := range apiMap {
+		if v != nil {
+			typeOf := reflect.TypeOf(v).Kind()
+			if typeOf == reflect.Map {
+				m := n.apiMap(v.(map[string]interface{}))
+				for k1, v1 := range m {
+					ret[k+"."+k1] = v1
+				}
+			} else {
+				ret[k] = v
+			}
+		}
+
+	}
+	return ret
+}
+
+// InitEnd event
+func (n *WebHook) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEventRespData, error) {
+	//if !n.CheckRefuse(ctx, n.Db, eventData.ProcessInstanceID) {
+	//	return nil, nil
+	//}
 	flow, err := n.FlowRepo.FindByProcessID(n.Db, eventData.ProcessID)
 	if err != nil {
 		return nil, err
@@ -424,30 +835,6 @@ func (n *WebHook) InitBegin(ctx context.Context, eventData *EventData) (*pb.Node
 			return nil, err
 		}
 	}
-	return nil, nil
-}
-
-func (n *WebHook) apiMap(apiMap map[string]interface{}) map[string]interface{} {
-	ret := make(map[string]interface{})
-	for k, v := range apiMap {
-		if v != nil {
-			typeOf := reflect.TypeOf(v).Kind()
-			if typeOf == reflect.Map {
-				m := n.apiMap(v.(map[string]interface{}))
-				for k1, v1 := range m {
-					ret[k+"."+k1] = v1
-				}
-			} else {
-				ret[k] = v
-			}
-		}
-
-	}
-	return ret
-}
-
-// InitEnd event
-func (n *WebHook) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEventRespData, error) {
 	return nil, nil
 }
 

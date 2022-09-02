@@ -65,6 +65,7 @@ func NewNodeFactory(conf *config.Configs, opts ...options.Options) (*NodeFactory
 		FormAPI:                client.NewForm(conf),
 		InstanceRepo:           mysql.NewInstanceRepo(),
 		InstanceVariablesRepo:  mysql.NewInstanceVariablesRepo(),
+		InstanceStepRepo:       mysql.NewInstanceStepRepo(),
 		AbnormalTaskRepo:       mysql.NewAbnormalTaskRepo(),
 		FlowVariable:           mysql.NewVariablesRepo(),
 		DispatcherCallbackRepo: mysql.NewDispatcherCallbackRepo(),

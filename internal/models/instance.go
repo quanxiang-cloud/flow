@@ -38,6 +38,7 @@ type Instance struct {
 	FormSchema        interface{}     `gorm:"-" json:"formSchema"`
 	Tasks             []ActTaskEntity `gorm:"-" json:"tasks"`
 	Nodes             []NodeModel     `gorm:"-" json:"nodes"`
+	RequestID         string          `json:"requestID"`
 }
 
 // InstanceRepo interface
@@ -46,6 +47,7 @@ type InstanceRepo interface {
 	Update(db *gorm.DB, ID string, updateMap map[string]interface{}) error
 	Delete(db *gorm.DB, ID string) error
 	FindByID(db *gorm.DB, ID string) (*Instance, error)
+	FindByRequestID(db *gorm.DB, RequestID string) ([]Instance, error)
 	FindByIDs(db *gorm.DB, IDs []string) ([]*Instance, error)
 	FindByProcessInstanceIDs(db *gorm.DB, processInstanceIDs []string) ([]*Instance, error)
 	GetEntityByProcessInstanceID(db *gorm.DB, processInstanceID string) (*Instance, error)

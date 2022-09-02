@@ -161,6 +161,9 @@ func Request(ctx context.Context, client *http.Client, uri string, params interf
 	}
 	logger.Logger.Info("Request-Id:" + pkg.STDRequestID(ctx).String + " resp:" + string(body))
 	if response.StatusCode == http.StatusOK {
+		if body == nil || string(body) == "null" || string(body) == "" {
+			return nil
+		}
 		err = json.Unmarshal(body, entity)
 		if err != nil {
 			logger.Logger.Errorw(err.Error(), pkg.STDRequestID(ctx))

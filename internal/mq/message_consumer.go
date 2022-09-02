@@ -34,16 +34,18 @@ type DaprEvent struct {
 	Type            string        `json:"type"`
 	Specversion     string        `json:"specversion"`
 	Source          string        `json:"source"`
+	RequestID       string        `json:"requestID"`
 }
 
 // FormData FormData
 type FormData struct {
-	TableID string      `json:"tableID"`
-	Entity  interface{} `json:"entity"`
-	Magic   string      `json:"magic"`
-	Seq     string      `json:"seq"`
-	Version string      `json:"version"`
-	Method  string      `json:"method"`
+	TableID   string      `json:"tableID"`
+	Entity    interface{} `json:"entity"`
+	Magic     string      `json:"magic"`
+	Seq       string      `json:"seq"`
+	Version   string      `json:"version"`
+	Method    string      `json:"method"`
+	RequestID string      `json:"requestID"`
 }
 
 // Subscription Subscription
@@ -55,6 +57,7 @@ func Subscription(trigger flow.Trigger) gin.HandlerFunc {
 			return
 		}
 		event := new(DaprEvent)
+		logger.Logger.Infow("formMsg", "receive form body: ", string(body))
 		err = json.Unmarshal(body, event)
 		if err != nil {
 			errHandle(c, err)
