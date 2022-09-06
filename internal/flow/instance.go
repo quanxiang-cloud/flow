@@ -1673,15 +1673,19 @@ func (i *instance) ReviewTask(ctx context.Context, processInstanceID string, tas
 	if !isReviewStatus(model.HandleType) {
 		return false, error2.NewErrorWithString(error2.Internal, "Handle type must be agree、refuse、fillIn ")
 	}
-	if model.HandleType == Refuse { // 拒绝
+	if model.HandleType == Refuse || model.HandleType == Agree { // 拒绝或者同意
 		variables, err := i.instanceVariablesRepo.FindVariablesByProcessInstanceID(i.db, processInstanceID)
 		if err != nil {
 			return false, err
 		}
+		var value = "True"
+		if model.HandleType == Refuse {
+			value = "False"
+		}
 		for k := range variables {
 			if variables[k].Type == "SYSTEM" && variables[k].Name == "SYS_AUDIT_BOOL" {
 				err := i.instanceVariablesRepo.Update(i.db, variables[0].ID, map[string]interface{}{
-					"value": "False",
+					"value": value,
 				})
 				if err != nil {
 					logger.Logger.Error("update instance Variables err ,", err)
