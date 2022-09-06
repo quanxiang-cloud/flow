@@ -378,23 +378,23 @@ func (i *instance) addInstanceVariableValues(ctx context.Context, instance *mode
 
 	instanceVariables := make([]*models.InstanceVariables, 0)
 	for _, value := range flowVariablesEntities {
-		if "CUSTOM" == value.Type {
-			instanceVariable := &models.InstanceVariables{
-				ProcessInstanceID: instance.ProcessInstanceID,
-				Name:              value.Name,
-				Type:              value.Type,
-				Code:              value.Code,
-				FieldType:         value.FieldType,
-				Format:            value.Format,
-				Value:             value.DefaultValue,
-				Desc:              value.Desc,
-				BaseModel: models.BaseModel{
-					ID:         id2.GenID(),
-					CreateTime: time2.Now(),
-				},
-			}
-			instanceVariables = append(instanceVariables, instanceVariable)
+		//if "CUSTOM" == value.Type {
+		instanceVariable := &models.InstanceVariables{
+			ProcessInstanceID: instance.ProcessInstanceID,
+			Name:              value.Name,
+			Type:              value.Type,
+			Code:              value.Code,
+			FieldType:         value.FieldType,
+			Format:            value.Format,
+			Value:             value.DefaultValue,
+			Desc:              value.Desc,
+			BaseModel: models.BaseModel{
+				ID:         id2.GenID(),
+				CreateTime: time2.Now(),
+			},
 		}
+		instanceVariables = append(instanceVariables, instanceVariable)
+		//}
 	}
 	return i.instanceVariablesRepo.BatchCreate(i.db, instanceVariables)
 }
@@ -1672,6 +1672,23 @@ func (i *instance) ReviewTask(ctx context.Context, processInstanceID string, tas
 
 	if !isReviewStatus(model.HandleType) {
 		return false, error2.NewErrorWithString(error2.Internal, "Handle type must be agree、refuse、fillIn ")
+	}
+	if model.HandleType == Refuse { // 拒绝
+		variables, err := i.instanceVariablesRepo.FindVariablesByProcessInstanceID(i.db, processInstanceID)
+		if err != nil {
+			return false, err
+		}
+		for k := range variables {
+			if variables[k].Type == "SYSTEM" && variables[k].Name == "SYS_AUDIT_BOOL" {
+				err := i.instanceVariablesRepo.Update(i.db, variables[0].ID, map[string]interface{}{
+					"value": "False",
+				})
+				if err != nil {
+					logger.Logger.Error("update instance Variables err ,", err)
+				}
+			}
+
+		}
 	}
 
 	task, err := i.processAPI.CheckActiveTask(ctx, processInstanceID, taskID, userID)
