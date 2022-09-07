@@ -944,7 +944,7 @@ func (f *flow) UpdateFlowStatus(ctx context.Context, req *PublishProcessReq, usr
 				flowStatusResp.Flag = false
 				return flowStatusResp, err
 			}
-			ruleOne, err := f.triggerRuleRepo.FindByFormIDAndDFlowID(f.db, fl.ID, s.ID)
+			ruleOne, err := f.triggerRuleRepo.FindByFormIDAndDFlowID(f.db, fl.FormID, fl.ID)
 			if err != nil {
 				flowStatusResp.Flag = false
 				return flowStatusResp, err
@@ -956,6 +956,14 @@ func (f *flow) UpdateFlowStatus(ctx context.Context, req *PublishProcessReq, usr
 					FormID: fl.FormID,
 				}
 				if err = f.triggerRuleRepo.Create(tx, ftr); err != nil {
+					flowStatusResp.Flag = false
+					return flowStatusResp, err
+				}
+			} else {
+				err := f.triggerRuleRepo.Update(tx, ruleOne.ID, map[string]interface{}{
+					"rule": string(rule),
+				})
+				if err != nil {
 					flowStatusResp.Flag = false
 					return flowStatusResp, err
 				}
@@ -1505,7 +1513,7 @@ func (f *flow) AppReplicationImport(ctx context.Context, req *AppReplicationImpo
 			if err != nil {
 				continue
 			}
-			ruleOne, err := f.triggerRuleRepo.FindByFormIDAndDFlowID(f.db, flow.ID, s.ID)
+			ruleOne, err := f.triggerRuleRepo.FindByFormIDAndDFlowID(f.db, flow.FormID, flow.ID)
 			if err != nil {
 				continue
 			}
@@ -1519,6 +1527,13 @@ func (f *flow) AppReplicationImport(ctx context.Context, req *AppReplicationImpo
 				ftr.CreatorID = userID
 				ftr.CreateTime = time2.Now()
 				if err = f.triggerRuleRepo.Create(tx, ftr); err != nil {
+					continue
+				}
+			} else {
+				err := f.triggerRuleRepo.Update(tx, ruleOne.ID, map[string]interface{}{
+					"rule": string(rule),
+				})
+				if err != nil {
 					continue
 				}
 			}

@@ -65,7 +65,9 @@ func Subscription(trigger flow.Trigger) gin.HandlerFunc {
 		}
 		formMsg := event.Data
 		logger.Logger.Infow("formMsg", "receive form data: ", formMsg)
-		err = trigger.MessageTrigger(formMsg)
+		if formMsg.RequestID != "" {
+			err = trigger.MessageTrigger(formMsg)
+		}
 		errHandle(c, err)
 	}
 }
