@@ -20,6 +20,7 @@ import (
 	"github.com/quanxiang-cloud/flow/internal/models"
 	"github.com/quanxiang-cloud/flow/internal/models/mysql"
 	"github.com/quanxiang-cloud/flow/internal/server/options"
+	"github.com/quanxiang-cloud/flow/pkg"
 	"github.com/quanxiang-cloud/flow/pkg/client"
 	"github.com/quanxiang-cloud/flow/pkg/config"
 	"github.com/quanxiang-cloud/flow/pkg/misc/id2"
@@ -372,7 +373,7 @@ func (t *task) AutoReviewTask(ctx context.Context, flowEntity *models.Flow, flow
 			Entity: formData["entity"],
 			// Ref: formData["ref"],
 		}
-
+		ctx = pkg.SetRequestID2(ctx, flowInstanceEntity.RequestID)
 		err := t.formAPI.UpdateData(ctx, flowInstanceEntity.AppID, flowInstanceEntity.FormID, flowInstanceEntity.FormInstanceID, saveFormDataReq, false)
 		if err != nil {
 			return err

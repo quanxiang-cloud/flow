@@ -78,7 +78,7 @@ func (t *trigger) MessageTrigger(formMsg *FormMsg) error {
 		} else if formMsg.Method == DeleteMethod {
 			userID = entityMap["delete_id"].(string)
 		}
-		ctx := pkg.CTXWrapper(formMsg.Seq, userID, userName)
+		ctx := pkg.CTXWrapper(formMsg.RequestID, userID, userName)
 		// 过滤消息，看是否需要判断触发，用于节点上设置数据修改是否继续触发流程功能
 		flag := true
 		if len(formMsg.Seq) > 0 {

@@ -15,7 +15,6 @@ package node
 
 import (
 	"context"
-	"encoding/json"
 	"github.com/quanxiang-cloud/flow/pkg/client"
 	"github.com/quanxiang-cloud/flow/pkg/config"
 	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
@@ -38,50 +37,54 @@ func NewLetter(conf *config.Configs, node *Node) *Letter {
 
 // InitBegin event
 func (n *Letter) InitBegin(ctx context.Context, eventData *EventData) (*pb.NodeEventRespData, error) {
-	logger.Logger.Info("发送站内信，processID=", eventData.ProcessID, "letterDefKey=", eventData.NodeDefKey)
-	var bdData emailBD
-	b, err := json.Marshal(eventData.Shape.Data.BusinessData)
-	if err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(b, &bdData); err != nil {
-		return nil, err
-	}
-
-	var recivers []client.Receivers
-	for _, user := range bdData.ApprovePersons.Users {
-		reciver := client.Receivers{
-			Type: 1,
-			ID:   user["id"].(string),
-			Name: user["ownerName"].(string),
-		}
-		recivers = append(recivers, reciver)
-	}
-	types, err := strconv.Atoi(eventData.Shape.Data.BusinessData["sort"].(string))
-	if len(recivers) > 0 {
-		web := client.Web{
-			IsSend: true,
-			Contents: client.Contents{
-				Content: bdData.Content,
-			},
-			Title:     utils.Strval(bdData.Title),
-			Receivers: recivers,
-			Types:     types,
-		}
-		msgReq := client.Mail{
-			Web: web,
-		}
-		err = n.MessageCenterAPI.MessageCreateff(ctx, msgReq)
-		if err != nil {
-			return nil, err
-		}
-	}
+	//logger.Logger.Info("发送站内信，processID=", eventData.ProcessID, "letterDefKey=", eventData.NodeDefKey)
+	//var bdData emailBD
+	//b, err := json.Marshal(eventData.Shape.Data.BusinessData)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//if err := json.Unmarshal(b, &bdData); err != nil {
+	//	return nil, err
+	//}
+	//
+	//var recivers []client.Receivers
+	//for _, user := range bdData.ApprovePersons.Users {
+	//	reciver := client.Receivers{
+	//		Type: 1,
+	//		ID:   user["id"].(string),
+	//		Name: user["ownerName"].(string),
+	//	}
+	//	recivers = append(recivers, reciver)
+	//}
+	//types, err := strconv.Atoi(eventData.Shape.Data.BusinessData["sort"].(string))
+	//if len(recivers) > 0 {
+	//	web := client.Web{
+	//		IsSend: true,
+	//		Contents: client.Contents{
+	//			Content: bdData.Content,
+	//		},
+	//		Title:     utils.Strval(bdData.Title),
+	//		Receivers: recivers,
+	//		Types:     types,
+	//	}
+	//	msgReq := client.Mail{
+	//		Web: web,
+	//	}
+	//	err = n.MessageCenterAPI.MessageCreateff(ctx, msgReq)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//}
 
 	return nil, nil
 }
 
 // InitEnd event
 func (n *Letter) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEventRespData, error) {
+	logger.Logger.Info("发送站内信，processID=", eventData.ProcessID, "letterDefKey=", eventData.NodeDefKey)
+	//if !n.CheckRefuse(ctx, n.Db, eventData.ProcessInstanceID) {
+	//	return nil, nil
+	//}
 	instance, err := n.InstanceRepo.GetEntityByProcessInstanceID(n.Db, eventData.ProcessInstanceID)
 	if err != nil {
 		return nil, err

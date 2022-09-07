@@ -14,11 +14,15 @@ limitations under the License.
 package node
 
 import (
+	"context"
+	"encoding/json"
 	"github.com/quanxiang-cloud/flow/internal/flow"
 	"github.com/quanxiang-cloud/flow/internal/flow/callback_tasks"
 	"github.com/quanxiang-cloud/flow/internal/models"
 	"github.com/quanxiang-cloud/flow/pkg/client"
+	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
 	"gorm.io/gorm"
+	"strings"
 )
 
 // Node struct
@@ -27,6 +31,7 @@ type Node struct {
 	FlowRepo               models.FlowRepo
 	InstanceRepo           models.InstanceRepo
 	InstanceVariablesRepo  models.InstanceVariablesRepo
+	InstanceStepRepo       models.InstanceStepRepo
 	AbnormalTaskRepo       models.AbnormalTaskRepo
 	InstanceExecutionRepo  models.InstanceExecutionRepo
 	FlowVariable           models.VariablesRepo
@@ -47,4 +52,27 @@ type Node struct {
 // SetDB set db
 func (n *Node) SetDB(db *gorm.DB) {
 	n.Db = db
+}
+
+func (n *Node) CheckRefuse(ctx context.Context, db *gorm.DB, processInstanceID string) bool {
+	instanceSteps, err := n.InstanceStepRepo.FindInstanceStepsByStatus(n.Db, processInstanceID, []string{"REFUSE"})
+	if err != nil {
+		return false
+	}
+	if len(instanceSteps) > 0 {
+		return false
+	}
+	tasksReq := client.GetTasksReq{
+		InstanceID: []string{processInstanceID},
+	}
+	taskResp, _ := n.ProcessAPI.GetHistoryTasks(ctx, tasksReq)
+	tasks := taskResp.Data
+	marshal, _ := json.Marshal(taskResp)
+	logger.Logger.Debug("taskResp==", string(marshal))
+	for k := range tasks {
+		if strings.Contains(tasks[k].Comments, "REFUSE") {
+			return false
+		}
+	}
+	return true
 }

@@ -94,6 +94,13 @@ type flow struct {
 	conf                  *config.Configs
 }
 
+const (
+	SystemAudit        = "SYS_AUDIT_BOOL"
+	SystemType         = "SYSTEM"
+	SystemFieldType    = "boolean"
+	SystemDefaultValue = "True"
+)
+
 // NewFlow init
 func NewFlow(conf *config.Configs, opts ...options.Options) (Flow, error) {
 	f := &flow{
@@ -149,7 +156,7 @@ func (f *flow) SaveFlow(ctx context.Context, req *models.Flow, userID string) (*
 	if len(req.BpmnText) > 0 {
 		req.BpmnText = utils.UnicodeEmojiCode(req.BpmnText)
 	}
-
+	tx := f.db.Begin()
 	if len(req.ID) > 0 {
 		flow, err := f.flowRepo.FindByID(f.db, req.ID)
 		if err != nil {
@@ -166,10 +173,42 @@ func (f *flow) SaveFlow(ctx context.Context, req *models.Flow, userID string) (*
 		req.ModifierID = userID
 		req.Status = models.DISABLE
 
-		err = f.flowRepo.UpdateFlow(f.db, req)
+		err = f.flowRepo.UpdateFlow(tx, req)
 		if err != nil {
+			tx.Rollback()
 			return nil, err
 		}
+		vb := &models.Variables{
+			FlowID:       req.ID,
+			Name:         SystemAudit,
+			Type:         SystemType,
+			Code:         "flowVar_" + strings.Replace(id2.GenID(), "-", "", -1),
+			FieldType:    SystemFieldType,
+			DefaultValue: SystemDefaultValue,
+			Desc:         "系统初始化变量，不可修改",
+		}
+
+		condition := make(map[string]interface{})
+		condition["name"] = SystemAudit
+		condition["flow_id"] = req.ID
+		variables, err := f.variablesRepo.FindVariables(f.db, condition)
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		if len(variables) > 0 {
+			tx.Commit()
+			return req, nil
+		}
+		vb.CreatorID = userID
+		vb.CreateTime = time2.Now()
+		vb.ModifyTime = time2.Now()
+		err = f.variablesRepo.Create(tx, vb)
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		tx.Commit()
 		return req, nil
 	}
 	if req.TriggerMode == "FORM_DATA" {
@@ -195,10 +234,42 @@ func (f *flow) SaveFlow(ctx context.Context, req *models.Flow, userID string) (*
 	req.Status = models.DISABLE
 
 	req.AppStatus = mysql.AppActiveStatus
-	err := f.flowRepo.Create(f.db, req)
+	err := f.flowRepo.Create(tx, req)
 	if err != nil {
+		tx.Rollback()
 		return nil, err
 	}
+	vb := &models.Variables{
+		FlowID:       req.ID,
+		Name:         SystemAudit,
+		Type:         SystemType,
+		Code:         "flowVar_" + strings.Replace(id2.GenID(), "-", "", -1),
+		FieldType:    SystemFieldType,
+		DefaultValue: SystemDefaultValue,
+		Desc:         "系统初始化变量，不可修改",
+	}
+
+	condition := make(map[string]interface{})
+	condition["name"] = SystemAudit
+	condition["flow_id"] = req.ID
+	variables, err := f.variablesRepo.FindVariables(f.db, condition)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if len(variables) > 0 {
+		tx.Commit()
+		return req, nil
+	}
+	vb.CreatorID = userID
+	vb.CreateTime = time2.Now()
+	vb.ModifyTime = time2.Now()
+	err = f.variablesRepo.Create(f.db, vb)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	tx.Commit()
 	return req, nil
 }
 
@@ -506,6 +577,10 @@ func (f *flow) SaveFlowVariable(ctx context.Context, req *SaveVariablesReq, user
 		}
 		if variable == nil {
 			err = error2.NewErrorWithString(error2.Internal, "Process variable is not exists ")
+			return nil, err
+		}
+		if variable.Type == SystemType {
+			err = error2.NewErrorWithString(error2.Internal, "Process system variable,user can not modify ")
 			return nil, err
 		}
 		if len(variables) > 0 && variables[0].ID != model.ID {
@@ -869,7 +944,7 @@ func (f *flow) UpdateFlowStatus(ctx context.Context, req *PublishProcessReq, usr
 				flowStatusResp.Flag = false
 				return flowStatusResp, err
 			}
-			ruleOne, err := f.triggerRuleRepo.FindByFormIDAndDFlowID(f.db, fl.ID, s.ID)
+			ruleOne, err := f.triggerRuleRepo.FindByFormIDAndDFlowID(f.db, fl.FormID, fl.ID)
 			if err != nil {
 				flowStatusResp.Flag = false
 				return flowStatusResp, err
@@ -881,6 +956,14 @@ func (f *flow) UpdateFlowStatus(ctx context.Context, req *PublishProcessReq, usr
 					FormID: fl.FormID,
 				}
 				if err = f.triggerRuleRepo.Create(tx, ftr); err != nil {
+					flowStatusResp.Flag = false
+					return flowStatusResp, err
+				}
+			} else {
+				err := f.triggerRuleRepo.Update(tx, ruleOne.ID, map[string]interface{}{
+					"rule": string(rule),
+				})
+				if err != nil {
 					flowStatusResp.Flag = false
 					return flowStatusResp, err
 				}
@@ -905,33 +988,33 @@ func (f *flow) UpdateFlowStatus(ctx context.Context, req *PublishProcessReq, usr
 			flowStatusResp.Flag = false
 			return flowStatusResp, err
 		}
-		//// add new record
-		//fl.SourceID = fl.ID
-		originalID := fl.ID
-		//fl.ID = id2.GenID()
-		//if err = f.flowRepo.Create(f.db, fl); err != nil {
+		////// add new record
+		////fl.SourceID = fl.ID
+		//originalID := fl.ID
+		////fl.ID = id2.GenID()
+		////if err = f.flowRepo.Create(f.db, fl); err != nil {
+		////	flowStatusResp.Flag = false
+		////	return flowStatusResp, err
+		////}
+		//
+		//// sync variable list
+		//variables, err := f.variablesRepo.FindVariables(f.db, map[string]interface{}{
+		//	"flow_id": originalID,
+		//})
+		//if err != nil {
 		//	flowStatusResp.Flag = false
 		//	return flowStatusResp, err
 		//}
-
-		// sync variable list
-		variables, err := f.variablesRepo.FindVariables(f.db, map[string]interface{}{
-			"flow_id": originalID,
-		})
-		if err != nil {
-			flowStatusResp.Flag = false
-			return flowStatusResp, err
-		}
-		if len(variables) > 0 {
-			for _, v := range variables {
-				v.FlowID = fl.ID
-				v.ID = id2.GenID()
-				if err = f.variablesRepo.Create(f.db, v); err != nil {
-					flowStatusResp.Flag = false
-					return flowStatusResp, err
-				}
-			}
-		}
+		//if len(variables) > 0 {
+		//	for _, v := range variables {
+		//		v.FlowID = fl.ID
+		//		v.ID = id2.GenID()
+		//		if err = f.variablesRepo.Create(f.db, v); err != nil {
+		//			flowStatusResp.Flag = false
+		//			return flowStatusResp, err
+		//		}
+		//	}
+		//}
 		// 如果是定时的将任务注册或删除调度器
 		if fl.TriggerMode == convert.FormTime {
 			code := fmt.Sprintf("flow:%s_%s", convert.CallbackOfCron, req.ID)
@@ -1430,7 +1513,7 @@ func (f *flow) AppReplicationImport(ctx context.Context, req *AppReplicationImpo
 			if err != nil {
 				continue
 			}
-			ruleOne, err := f.triggerRuleRepo.FindByFormIDAndDFlowID(f.db, flow.ID, s.ID)
+			ruleOne, err := f.triggerRuleRepo.FindByFormIDAndDFlowID(f.db, flow.FormID, flow.ID)
 			if err != nil {
 				continue
 			}
@@ -1444,6 +1527,13 @@ func (f *flow) AppReplicationImport(ctx context.Context, req *AppReplicationImpo
 				ftr.CreatorID = userID
 				ftr.CreateTime = time2.Now()
 				if err = f.triggerRuleRepo.Create(tx, ftr); err != nil {
+					continue
+				}
+			} else {
+				err := f.triggerRuleRepo.Update(tx, ruleOne.ID, map[string]interface{}{
+					"rule": string(rule),
+				})
+				if err != nil {
 					continue
 				}
 			}

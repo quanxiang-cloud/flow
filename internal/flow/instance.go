@@ -16,6 +16,7 @@ package flow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/quanxiang-cloud/flow/internal"
 	"github.com/quanxiang-cloud/flow/internal/convert"
@@ -237,6 +238,22 @@ func (i *instance) StartFlow(ctx context.Context, req *StartFlowModel) (string, 
 	if err != nil {
 		return "", err
 	}
+	if flowEntity.Status != models.ENABLE {
+		return "", nil
+	}
+
+	if flowEntity.TriggerMode != convert.FormTime {
+		if pkg.STDRequestID2(ctx) == "" {
+			return "", errors.New("start flow no requestID")
+		}
+		instances, err := i.instanceRepo.FindByRequestID(i.db, pkg.STDRequestID2(ctx))
+		if err != nil {
+			return "", err
+		}
+		if len(instances) >= 2 {
+			return "", errors.New("this flow maybe be dead cycle,can not start")
+		}
+	}
 
 	appCenter := client.NewAppCenter(i.conf)
 	appName, err := appCenter.GetAppName(ctx, flowEntity.AppID)
@@ -300,6 +317,7 @@ func (i *instance) StartFlow(ctx context.Context, req *StartFlowModel) (string, 
 		flowInstanceEntity.FormInstanceID = req.FormData["_id"].(string)
 		flowInstanceEntity.ApplyUserID = req.UserID
 		flowInstanceEntity.BaseModel.CreatorID = req.UserID
+		flowInstanceEntity.RequestID = pkg.STDRequestID2(ctx)
 
 	}
 
@@ -360,23 +378,23 @@ func (i *instance) addInstanceVariableValues(ctx context.Context, instance *mode
 
 	instanceVariables := make([]*models.InstanceVariables, 0)
 	for _, value := range flowVariablesEntities {
-		if "CUSTOM" == value.Type {
-			instanceVariable := &models.InstanceVariables{
-				ProcessInstanceID: instance.ProcessInstanceID,
-				Name:              value.Name,
-				Type:              value.Type,
-				Code:              value.Code,
-				FieldType:         value.FieldType,
-				Format:            value.Format,
-				Value:             value.DefaultValue,
-				Desc:              value.Desc,
-				BaseModel: models.BaseModel{
-					ID:         id2.GenID(),
-					CreateTime: time2.Now(),
-				},
-			}
-			instanceVariables = append(instanceVariables, instanceVariable)
+		//if "CUSTOM" == value.Type {
+		instanceVariable := &models.InstanceVariables{
+			ProcessInstanceID: instance.ProcessInstanceID,
+			Name:              value.Name,
+			Type:              value.Type,
+			Code:              value.Code,
+			FieldType:         value.FieldType,
+			Format:            value.Format,
+			Value:             value.DefaultValue,
+			Desc:              value.Desc,
+			BaseModel: models.BaseModel{
+				ID:         id2.GenID(),
+				CreateTime: time2.Now(),
+			},
 		}
+		instanceVariables = append(instanceVariables, instanceVariable)
+		//}
 	}
 	return i.instanceVariablesRepo.BatchCreate(i.db, instanceVariables)
 }
@@ -1026,7 +1044,7 @@ func (i *instance) Resubmit(ctx context.Context, processInstanceID string, param
 	if err != nil {
 		return false, err
 	}
-
+	ctx = pkg.SetRequestID2(ctx, flowInstanceEntity.RequestID)
 	err = i.formAPI.UpdateData(ctx, flowInstanceEntity.AppID, flowInstanceEntity.FormID, flowInstanceEntity.FormInstanceID, *saveFormDataReq, false)
 	if err != nil {
 		return false, err
@@ -1655,6 +1673,27 @@ func (i *instance) ReviewTask(ctx context.Context, processInstanceID string, tas
 	if !isReviewStatus(model.HandleType) {
 		return false, error2.NewErrorWithString(error2.Internal, "Handle type must be agree、refuse、fillIn ")
 	}
+	if model.HandleType == Refuse || model.HandleType == Agree { // 拒绝或者同意
+		variables, err := i.instanceVariablesRepo.FindVariablesByProcessInstanceID(i.db, processInstanceID)
+		if err != nil {
+			return false, err
+		}
+		var value = "True"
+		if model.HandleType == Refuse {
+			value = "False"
+		}
+		for k := range variables {
+			if variables[k].Type == "SYSTEM" && variables[k].Name == "SYS_AUDIT_BOOL" {
+				err := i.instanceVariablesRepo.Update(i.db, variables[0].ID, map[string]interface{}{
+					"value": value,
+				})
+				if err != nil {
+					logger.Logger.Error("update instance Variables err ,", err)
+				}
+			}
+
+		}
+	}
 
 	task, err := i.processAPI.CheckActiveTask(ctx, processInstanceID, taskID, userID)
 	if err != nil {
@@ -1686,26 +1725,27 @@ func (i *instance) ReviewTask(ctx context.Context, processInstanceID string, tas
 		"reviewRemark": model.Remark,
 	}
 
-	// 保存数据到表单接口,（将表达式替换成真实值，权限判断和数值拼装）
-	if model.FormData != nil {
-		formData := i.task.FilterCanEditFormData(ctx, entity, flowInstanceEntity, task.NodeDefKey, model.FormData)
-		if len(formData) > 0 {
-
-			saveFormDataReq := &client.UpdateEntity{}
-			formDataJSON, err := json.Marshal(formData)
-			if err == nil {
-				err = json.Unmarshal(formDataJSON, saveFormDataReq)
-			}
-			if err != nil {
-				return false, err
-			}
-
-			err = i.formAPI.UpdateData(ctx, flowInstanceEntity.AppID, flowInstanceEntity.FormID, flowInstanceEntity.FormInstanceID, *saveFormDataReq, false)
-			if err != nil {
-				return false, err
-			}
-		}
-	}
+	//// 保存数据到表单接口,（将表达式替换成真实值，权限判断和数值拼装）
+	//if model.FormData != nil {
+	//	formData := i.task.FilterCanEditFormData(ctx, entity, flowInstanceEntity, task.NodeDefKey, model.FormData)
+	//	if len(formData) > 0 {
+	//		logger.Logger.Debug("这执行了update")
+	//
+	//		saveFormDataReq := &client.UpdateEntity{}
+	//		formDataJSON, err := json.Marshal(formData)
+	//		if err == nil {
+	//			err = json.Unmarshal(formDataJSON, saveFormDataReq)
+	//		}
+	//		if err != nil {
+	//			return false, err
+	//		}
+	//		ctx = pkg.SetRequestID2(ctx, flowInstanceEntity.RequestID)
+	//		err = i.formAPI.UpdateData(ctx, flowInstanceEntity.AppID, flowInstanceEntity.FormID, flowInstanceEntity.FormInstanceID, *saveFormDataReq, false)
+	//		if err != nil {
+	//			return false, err
+	//		}
+	//	}
+	//}
 
 	params, err := i.GetInstanceVariableValues(ctx, flowInstanceEntity)
 	if err != nil {
