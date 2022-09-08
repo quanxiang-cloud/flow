@@ -15,7 +15,9 @@ package pkg
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/gin-gonic/gin"
+	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
 	"go.uber.org/zap"
 )
 
@@ -108,6 +110,27 @@ func STDRequestID2(ctx context.Context) string {
 	}
 
 	return ""
+}
+
+// SetRequestID2 set request id from context
+func SetRequestID2(ctx context.Context, requestID string) context.Context {
+	if ctx == nil {
+		return nil
+	}
+	v := ctx.Value(ctxValue("ctxValue"))
+	marshal, _ := json.Marshal(v.(values).m)
+	logger.Logger.Debug("old ctx====", string(marshal))
+
+	if v != nil {
+		v.(values).m[requestIDName] = requestID
+		newCtx := context.WithValue(context.Background(), ctxValue("ctxValue"), v)
+		v1 := newCtx.Value(ctxValue("ctxValue"))
+		marshal1, _ := json.Marshal(v1.(values).m)
+		logger.Logger.Debug("new ctx====", string(marshal1))
+		return newCtx
+	}
+
+	return ctx
 }
 
 // STDUserID get user id from context.Context

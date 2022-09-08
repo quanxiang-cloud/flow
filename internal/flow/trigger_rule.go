@@ -245,12 +245,13 @@ func (tr *triggerRule) SetDB(db *gorm.DB) {
 
 // FormMsg form msg
 type FormMsg struct {
-	TableID string      `json:"tableID"`
-	Entity  interface{} `json:"entity"`
-	Magic   string      `json:"magic"`
-	Seq     string      `json:"seq"`
-	Version string      `json:"version"`
-	Method  string      `json:"method"` // post 对应的就是新增，put 是修改，delete 是删除，
+	TableID   string      `json:"tableID"`
+	Entity    interface{} `json:"entity"`
+	Magic     string      `json:"magic"`
+	Seq       string      `json:"seq"`
+	Version   string      `json:"version"`
+	Method    string      `json:"method"` // post 对应的就是新增，put 是修改，delete 是删除，
+	RequestID string      `json:"requestID"`
 }
 
 // EventModel kafka msg event model

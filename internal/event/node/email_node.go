@@ -16,7 +16,6 @@ package node
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"github.com/quanxiang-cloud/flow/internal/convert"
 	"github.com/quanxiang-cloud/flow/internal/models"
 	"github.com/quanxiang-cloud/flow/pkg/client"
@@ -58,6 +57,69 @@ func NewEmail(conf *config.Configs, node *Node) *Email {
 
 // InitBegin event
 func (n *Email) InitBegin(ctx context.Context, eventData *EventData) (*pb.NodeEventRespData, error) {
+	//if !n.CheckRefuse(ctx, n.Db, eventData.ProcessInstanceID) {
+	//	return nil, nil
+	//}
+	//logger.Logger.Info("发送邮件，processID=", eventData.ProcessID, "emailDefKey=", eventData.NodeDefKey)
+	//var bdData emailBD
+	//b, err := json.Marshal(eventData.Shape.Data.BusinessData)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//if err := json.Unmarshal(b, &bdData); err != nil {
+	//	return nil, err
+	//}
+	//
+	//// gen req params
+	//mesAttachments := make([]map[string]interface{}, 0)
+	//if v := bdData.MesAttachment; v != nil {
+	//	//arr := v.([]interface{})
+	//	for _, e := range v {
+	//		tmp := e.(map[string]interface{})
+	//		mesAttachment := make(map[string]interface{})
+	//		mesAttachment["name"] = utils.Strval(tmp["file_name"])
+	//		mesAttachment["path"] = utils.Strval(tmp["file_url"])
+	//		mesAttachments = append(mesAttachments, mesAttachment)
+	//	}
+	//}
+	//
+	//emailAddr := make([]string, 0)
+	//for _, user := range bdData.ApprovePersons.Users {
+	//	// valid check
+	//	s := user["email"].(string)
+	//	if !utils.EmailAddressValid(&s) {
+	//		logger.Logger.Warnf("value of [%s] is not valid email address", s)
+	//		continue
+	//	}
+	//	emailAddr = append(emailAddr, s)
+	//}
+	//
+	//if len(emailAddr) > 0 {
+	//	email := client.Email{
+	//		To: emailAddr,
+	//		Contents: client.Contents{
+	//			Content: bdData.Content,
+	//		},
+	//		Title: utils.Strval(bdData.Title),
+	//		Files: mesAttachments,
+	//	}
+	//	msgReq := client.MsgReq{
+	//		Email: email,
+	//	}
+	//	err = n.MessageCenterAPI.MessageCreate(ctx, msgReq)
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//}
+
+	return nil, nil
+}
+
+// InitEnd event
+func (n *Email) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEventRespData, error) {
+	//if !n.CheckRefuse(ctx, n.Db, eventData.ProcessInstanceID) {
+	//	return nil, nil
+	//}
 	logger.Logger.Info("发送邮件，processID=", eventData.ProcessID, "emailDefKey=", eventData.NodeDefKey)
 	var bdData emailBD
 	b, err := json.Marshal(eventData.Shape.Data.BusinessData)
@@ -104,105 +166,6 @@ func (n *Email) InitBegin(ctx context.Context, eventData *EventData) (*pb.NodeEv
 		msgReq := client.MsgReq{
 			Email: email,
 		}
-		err = n.MessageCenterAPI.MessageCreate(ctx, msgReq)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return nil, nil
-}
-
-// InitEnd event
-func (n *Email) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEventRespData, error) {
-	// 业务数据
-	var bdData emailBD
-	var handleUsers []*client.UserInfoResp
-	b, err := json.Marshal(eventData.Shape.Data.BusinessData)
-	if err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(b, &bdData); err != nil {
-		return nil, err
-	}
-	instance, err := n.InstanceRepo.GetEntityByProcessInstanceID(n.Db, eventData.ProcessInstanceID)
-	if err != nil {
-		return nil, err
-	}
-
-	dataReq := client.FormDataConditionModel{
-		AppID:   instance.AppID,
-		TableID: instance.FormID,
-		DataID:  instance.FormInstanceID,
-	}
-	formResp, err := n.FormAPI.GetFormData(ctx, dataReq)
-	if err != nil {
-		return nil, err
-	}
-	if formResp == nil {
-		return nil, nil
-	}
-	// replace content
-	content := utils.Strval(bdData.Content)
-	value := n.Flow.FormatFormValue(instance, formResp)
-	//var fieldType map[string]interface{}
-	//if v := bdData.FieldType; v != nil {
-	//	fieldType = v.(map[string]interface{})
-	//}
-	for k, v := range value {
-		t := bdData.FieldType[k]
-		if t == "datepicker" {
-			vt := v.(string)
-			if strings.Contains(vt, ".000Z") {
-				vt = strings.Replace(vt, ".000Z", "+0000", 1)
-			}
-			v = utils.ChangeISO8601ToBjTime(vt)
-		}
-		content = strings.Replace(content, "${"+k+"}", utils.Strval(v), 1)
-	}
-	switch bdData.ApprovePersons.Type {
-	case convert.EmailTypeOfField:
-		handleUsers = n.Flow.GetTaskHandleUsers2(ctx, bdData.ApprovePersons, instance)
-	case convert.EmailTypeOfMultipleField:
-		handleUsers = n.MultipleFieldsHandle(ctx, &bdData, formResp, instance)
-	default:
-		return nil, fmt.Errorf("unkonw type [%s] of approvePersons.type", bdData.ApprovePersons.Type)
-	}
-	// gen req params
-	mesAttachments := make([]map[string]interface{}, 0)
-	if v := bdData.MesAttachment; v != nil {
-		//arr := v.([]interface{})
-		for _, e := range v {
-			tmp := e.(map[string]interface{})
-			mesAttachment := make(map[string]interface{})
-			mesAttachment["name"] = utils.Strval(tmp["file_name"])
-			mesAttachment["path"] = utils.Strval(tmp["file_url"])
-			mesAttachments = append(mesAttachments, mesAttachment)
-		}
-	}
-	emailAddr := make([]string, 0)
-	for _, user := range handleUsers {
-		// valid check
-		if !utils.EmailAddressValid(&user.Email) {
-			logger.Logger.Warnf("value of [%s] is not valid email address", user.Email)
-			continue
-		}
-		emailAddr = append(emailAddr, user.Email)
-	}
-	if len(emailAddr) > 0 {
-		email := client.Email{
-			To: emailAddr,
-			Contents: client.Contents{
-				Content: content,
-			},
-			Title: utils.Strval(bdData.Title),
-			Files: mesAttachments,
-		}
-		msgReq := client.MsgReq{
-			Email: email,
-		}
-		// post msg
-
 		err = n.MessageCenterAPI.MessageCreate(ctx, msgReq)
 		if err != nil {
 			return nil, err

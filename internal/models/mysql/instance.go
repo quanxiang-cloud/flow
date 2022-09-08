@@ -88,6 +88,19 @@ func (r *instanceRepo) FindByID(db *gorm.DB, ID string) (*models.Instance, error
 	return entity, nil
 }
 
+// FindByRequestID find model by ID
+func (r *instanceRepo) FindByRequestID(db *gorm.DB, RequestID string) ([]models.Instance, error) {
+	entitys := make([]models.Instance, 0)
+	err := db.Table(r.TableName()).
+		Where("request_id = ?", RequestID).
+		Find(&entitys).
+		Error
+	if err != nil {
+		return nil, err
+	}
+	return entitys, nil
+}
+
 func (r *instanceRepo) FindByIDs(db *gorm.DB, IDs []string) ([]*models.Instance, error) {
 	entity := make([]*models.Instance, 0)
 	err := db.Table(r.TableName()).
