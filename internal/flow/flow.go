@@ -1347,7 +1347,7 @@ func (f *flow) GetInstanceVariableValues(ctx context.Context, instance *models.I
 		users, _ := f.identityAPI.FindUsersByIDs(ctx, assignees)
 		for _, task := range tasks.Data {
 			valueMap["$"+task.NodeDefKey+".handleUserId"] = task.Assignee
-			if users != nil {
+			if users != nil && task.Assignee != "" {
 				valueMap["$"+task.NodeDefKey+".handleUserName"] = users[task.Assignee].UserName
 			}
 			valueMap["$"+task.NodeDefKey+".handleTime"] = task.EndTime
