@@ -700,9 +700,11 @@ type ProcessNextNodeModel struct {
 // Input struct
 type Input struct {
 	Type      string      `json:"type"`
+	FieldType string      `json:"fieldType"`
 	Name      string      `json:"name"`
 	Data      interface{} `json:"data"`
 	In        string      `json:"in"`
 	Title     string      `json:"title"`
 	FieldName string      `json:"fieldName"`
+	TableID   string      `json:"tableID"`
 }

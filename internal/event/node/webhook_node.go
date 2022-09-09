@@ -506,11 +506,43 @@ func (n *WebHook) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEv
 		if err != nil {
 			return nil, err
 		}
+		var ref = make(map[string]map[string]string)
+		for k := range inputs {
+			if inputs[k].FieldType == "AssociatedRecords" {
+				m := make(map[string]string)
+				m["appID"] = instance.AppID
+				m["tableID"] = inputs[k].TableID
+				m["type"] = "associated_records"
+				ref[inputs[k].FieldName] = m
+			}
+			if inputs[k].FieldType == "ForeignTable" {
+				m := make(map[string]string)
+				m["appID"] = instance.AppID
+				m["tableID"] = inputs[k].TableID
+				m["type"] = "foreign_table"
+				ref[inputs[k].FieldName] = m
+			}
+			if inputs[k].FieldType == "SubTable" {
+				m := make(map[string]string)
+				m["appID"] = instance.AppID
+				m["tableID"] = inputs[k].TableID
+				m["type"] = "sub_table"
+				ref[inputs[k].FieldName] = m
+			}
+			if inputs[k].FieldType == "AggregationRecords" {
+				m := make(map[string]string)
+				m["appID"] = instance.AppID
+				m["tableID"] = inputs[k].TableID
+				m["type"] = "aggregation"
+				ref[inputs[k].FieldName] = m
+			}
+		}
 
 		dataReq := client.FormDataConditionModel{
 			AppID:   instance.AppID,
 			TableID: instance.FormID,
 			DataID:  instance.FormInstanceID,
+			Ref:     ref,
 		}
 		dataResp, err := n.FormAPI.GetFormData(ctx, dataReq)
 		if err != nil {
@@ -537,6 +569,9 @@ func (n *WebHook) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEv
 		}
 
 		for _, e := range inputs {
+			if e.Name == "" {
+				continue
+			}
 			if e.In == convert.Header {
 				val, err := n.webHookCal(ctx, e, variables, formDefKey)
 				if err != nil {
@@ -881,6 +916,10 @@ func (n *WebHook) webHookCal(ctx context.Context, input convert.Input, variables
 		if strings.Contains(utils.Strval(input.Data), "$") {
 
 			expression := strings.TrimSpace(utils.Strval(input.Data))
+			var flag = false
+			if strings.Contains(expression, "+") || strings.Contains(expression, "-") || strings.Contains(expression, "*") || strings.Contains(expression, "/") {
+				flag = true
+			}
 			expression = strings.Replace(expression, "$variable.", "", -1)
 			expression = strings.Replace(expression, "$"+formDefKey+".", "", -1)
 
@@ -888,7 +927,11 @@ func (n *WebHook) webHookCal(ctx context.Context, input convert.Input, variables
 				// if strings.HasPrefix(k, "$") && strings.Contains(expression, k) {
 				if strings.Contains(expression, k) {
 					expression = strings.Replace(expression, k, utils.Strval(v), -1)
+					break
 				}
+			}
+			if !flag {
+				return expression, nil
 			}
 
 			expression = strings.Replace(expression, "$", "", -1)

@@ -2929,9 +2929,10 @@ func (i *instance) ConvertInstance(ctx context.Context, instances []*client.Proc
 		}
 		ret := make([]*models.Instance, 0)
 		for _, v := range instances {
-			e := retMap[v.ID]
-			e.ModifyTime = v.ModifyTime
-			ret = append(ret, e)
+			if e, ok := retMap[v.ID]; ok && e != nil {
+				e.ModifyTime = v.ModifyTime
+				ret = append(ret, e)
+			}
 		}
 		return ret, processInstanceIDs
 	}
