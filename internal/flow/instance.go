@@ -1140,6 +1140,7 @@ func (i *instance) SendBack(ctx context.Context, processInstanceID string, taskI
 	handleTaskModel := &models.HandleTaskModel{
 		HandleType: opSendBack,
 		HandleDesc: "将工作流打回至发起人",
+		Remark:     model.Remark,
 	}
 	i.operationRecord.AddOperationRecord(ctx, flowInstanceEntity, task, handleTaskModel)
 
