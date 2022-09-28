@@ -16,6 +16,7 @@ package flow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -92,6 +93,7 @@ type flow struct {
 	instanceExecutionRepo models.InstanceExecutionRepo
 	dispatcher            client.Dispatcher
 	conf                  *config.Configs
+	flowProcessRepo       models.FlowProcessRelationRepo
 }
 
 const (
@@ -121,6 +123,7 @@ func NewFlow(conf *config.Configs, opts ...options.Options) (Flow, error) {
 		instanceExecutionRepo: mysql.NewInstanceExecutionRepo(),
 		dispatcher:            client.NewDispatcher(conf),
 		conf:                  conf,
+		flowProcessRepo:       mysql.NewFlowProcessRelationRepo(),
 	}
 
 	for _, opt := range opts {
@@ -139,8 +142,21 @@ func (f *flow) GetShapeByProcessID(ctx context.Context, processID, nodeDefKey st
 	if err != nil {
 		return nil, err
 	}
+	bpmn := ""
+	if flow == nil {
+		relation, err := f.flowProcessRepo.FindByProcessID(f.db, processID)
+		if err != nil {
+			return nil, err
+		}
+		if relation == nil {
+			return nil, errors.New("can not find flow info")
+		}
+		bpmn = relation.BpmnText
+	} else {
+		bpmn = flow.BpmnText
+	}
 
-	shape, err := convert.GetShapeByTaskDefKey(flow.BpmnText, nodeDefKey)
+	shape, err := convert.GetShapeByTaskDefKey(bpmn, nodeDefKey)
 	if err != nil {
 		return nil, err
 	}
@@ -1058,7 +1074,16 @@ func (f *flow) UpdateFlowStatus(ctx context.Context, req *PublishProcessReq, usr
 		}
 
 	} else {
-		err := f.flowRepo.UpdateFlow(tx, fl)
+		flowProcessRelation := &models.FlowProcessRelation{}
+		flowProcessRelation.ID = id2.GenID()
+		flowProcessRelation.FlowID = fl.ID
+		flowProcessRelation.ProcessID = fl.ProcessID
+		flowProcessRelation.BpmnText = fl.BpmnText
+		err := f.flowProcessRepo.Create(f.db, flowProcessRelation)
+		if err != nil {
+			return nil, err
+		}
+		err = f.flowRepo.UpdateFlow(tx, fl)
 		if err != nil {
 			flowStatusResp.Flag = false
 			return flowStatusResp, err
