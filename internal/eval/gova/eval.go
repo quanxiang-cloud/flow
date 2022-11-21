@@ -48,5 +48,7 @@ func EvalFunc(exprString string, parameters map[string]interface{}) (interface{}
 	if err != nil {
 		return nil, err
 	}
-	return res, nil
+	return &result{
+		Res: res,
+	}, nil
 }
