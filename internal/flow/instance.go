@@ -1726,27 +1726,27 @@ func (i *instance) ReviewTask(ctx context.Context, processInstanceID string, tas
 		"reviewRemark": model.Remark,
 	}
 
-	//// 保存数据到表单接口,（将表达式替换成真实值，权限判断和数值拼装）
-	//if model.FormData != nil {
-	//	formData := i.task.FilterCanEditFormData(ctx, entity, flowInstanceEntity, task.NodeDefKey, model.FormData)
-	//	if len(formData) > 0 {
-	//		logger.Logger.Debug("这执行了update")
-	//
-	//		saveFormDataReq := &client.UpdateEntity{}
-	//		formDataJSON, err := json.Marshal(formData)
-	//		if err == nil {
-	//			err = json.Unmarshal(formDataJSON, saveFormDataReq)
-	//		}
-	//		if err != nil {
-	//			return false, err
-	//		}
-	//		ctx = pkg.SetRequestID2(ctx, flowInstanceEntity.RequestID)
-	//		err = i.formAPI.UpdateData(ctx, flowInstanceEntity.AppID, flowInstanceEntity.FormID, flowInstanceEntity.FormInstanceID, *saveFormDataReq, false)
-	//		if err != nil {
-	//			return false, err
-	//		}
-	//	}
-	//}
+	// 保存数据到表单接口,（将表达式替换成真实值，权限判断和数值拼装）
+	if model.FormData != nil {
+		formData := i.task.FilterCanEditFormData(ctx, entity, flowInstanceEntity, task.NodeDefKey, model.FormData)
+		if len(formData) > 0 {
+			logger.Logger.Debug("这执行了update")
+
+			saveFormDataReq := &client.UpdateEntity{}
+			formDataJSON, err := json.Marshal(formData)
+			if err == nil {
+				err = json.Unmarshal(formDataJSON, saveFormDataReq)
+			}
+			if err != nil {
+				return false, err
+			}
+			ctx = pkg.SetRequestID2(ctx, flowInstanceEntity.RequestID)
+			err = i.formAPI.UpdateData(ctx, flowInstanceEntity.AppID, flowInstanceEntity.FormID, flowInstanceEntity.FormInstanceID, *saveFormDataReq, false)
+			if err != nil {
+				return false, err
+			}
+		}
+	}
 
 	params, err := i.GetInstanceVariableValues(ctx, flowInstanceEntity)
 	if err != nil {
