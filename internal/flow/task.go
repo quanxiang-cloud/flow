@@ -181,7 +181,7 @@ func (t *task) TaskInitHandle(ctx context.Context, flowEntity *models.Flow, flow
 			logger.Logger.Error(err)
 		}
 
-		//go t.sendHandleMessage(ctx, flowInstanceEntity, task, handleUserIds)
+		go t.sendHandleMessage(ctx, flowInstanceEntity, task, handleUserIds)
 	}
 
 	// 检查流程实例状态，如果流程实例结束，则flow要同步状态
@@ -204,7 +204,7 @@ func (t *task) TaskInitHandle(ctx context.Context, flowEntity *models.Flow, flow
 
 // sendHandleMessage send handle message to assignee user
 func (t *task) sendHandleMessage(ctx context.Context, instance *models.Instance, task *client.ProcessTask, handleUserIDs []string) error {
-	messageContent := "有新的" + instance.Name + "流程的审批，请点击查看：" + t.serverConf.APIHost.HomeHost + "approvals/" +
+	messageContent := "您有新的" + instance.Name + "流程的审批，请点击查看：" + t.serverConf.APIHost.HomeHost + "approvals/" +
 		instance.ProcessInstanceID + "/" + task.ID + "/WAIT_HANDLE_PAGE"
 
 	handleUsers, err := t.identityAPI.FindUsersByIDs(ctx, handleUserIDs)

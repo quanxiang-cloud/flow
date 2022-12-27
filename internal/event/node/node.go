@@ -27,26 +27,27 @@ import (
 
 // Node struct
 type Node struct {
-	Db                     *gorm.DB
-	FlowRepo               models.FlowRepo
-	InstanceRepo           models.InstanceRepo
-	InstanceVariablesRepo  models.InstanceVariablesRepo
-	InstanceStepRepo       models.InstanceStepRepo
-	AbnormalTaskRepo       models.AbnormalTaskRepo
-	InstanceExecutionRepo  models.InstanceExecutionRepo
-	FlowVariable           models.VariablesRepo
-	DispatcherCallbackRepo models.DispatcherCallbackRepo
-	Urge                   callback_tasks.Urge
-	Flow                   flow.Flow
-	Instance               flow.Instance
-	OperationRecord        flow.OperationRecord
-	Task                   flow.Task
-	FormAPI                client.Form
-	MessageCenterAPI       client.MessageCenter
-	StructorAPI            client.Structor
-	ProcessAPI             client.Process
-	IdentityAPI            client.Identity
-	Dispatcher             client.Dispatcher
+	Db                      *gorm.DB
+	FlowRepo                models.FlowRepo
+	InstanceRepo            models.InstanceRepo
+	InstanceVariablesRepo   models.InstanceVariablesRepo
+	InstanceStepRepo        models.InstanceStepRepo
+	AbnormalTaskRepo        models.AbnormalTaskRepo
+	InstanceExecutionRepo   models.InstanceExecutionRepo
+	FlowVariable            models.VariablesRepo
+	DispatcherCallbackRepo  models.DispatcherCallbackRepo
+	Urge                    callback_tasks.Urge
+	Flow                    flow.Flow
+	Instance                flow.Instance
+	OperationRecord         flow.OperationRecord
+	Task                    flow.Task
+	FormAPI                 client.Form
+	MessageCenterAPI        client.MessageCenter
+	StructorAPI             client.Structor
+	ProcessAPI              client.Process
+	IdentityAPI             client.Identity
+	Dispatcher              client.Dispatcher
+	FlowProcessRelationRepo models.FlowProcessRelationRepo
 }
 
 // SetDB set db

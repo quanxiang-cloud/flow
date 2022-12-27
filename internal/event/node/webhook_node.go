@@ -16,6 +16,7 @@ package node
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/quanxiang-cloud/flow/internal/convert"
 	"github.com/quanxiang-cloud/flow/internal/models"
 	"github.com/quanxiang-cloud/flow/pkg/client"
@@ -457,6 +458,19 @@ func (n *WebHook) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEv
 	flow, err := n.FlowRepo.FindByProcessID(n.Db, eventData.ProcessID)
 	if err != nil {
 		return nil, err
+	}
+	if flow == nil {
+		flowProcessRelation, err := n.FlowProcessRelationRepo.FindByProcessID(n.Db, eventData.ProcessID)
+		if err != nil {
+			return nil, err
+		}
+		flow, err = n.FlowRepo.FindByID(n.Db, flowProcessRelation.FlowID)
+		if err != nil {
+			return nil, err
+		}
+		if flow == nil {
+			return nil, errors.New("webhook node not match flow")
+		}
 	}
 	// do req
 	queryFlag := false

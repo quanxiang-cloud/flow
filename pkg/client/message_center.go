@@ -100,7 +100,9 @@ type Web struct {
 
 // Contents 消息内容
 type Contents struct {
-	Content string `json:"content"`
+	Content     string            `json:"content"`
+	TemplateID  string            `json:"templateID"`
+	KeyAndValue map[string]string `json:"keyAndValue"`
 }
 
 // Files Files
