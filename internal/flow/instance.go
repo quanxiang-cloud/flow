@@ -1695,7 +1695,20 @@ func (i *instance) ReviewTask(ctx context.Context, processInstanceID string, tas
 
 		}
 	}
-
+	flowInstanceEntity, err := i.instanceRepo.GetEntityByProcessInstanceID(i.db, processInstanceID)
+	if err != nil {
+		return false, err
+	}
+	if flowInstanceEntity == nil {
+		return false, error2.NewErrorWithString(error2.Internal, "Can not find flow instance data ")
+	}
+	entity, err := i.flowRepo.FindByID(i.db, flowInstanceEntity.FlowID)
+	if err != nil {
+		return false, err
+	}
+	if entity == nil {
+		return false, error2.NewErrorWithString(error2.Internal, "Can not find flow data ")
+	}
 	task, err := i.processAPI.CheckActiveTask(ctx, processInstanceID, taskID, userID)
 	if err != nil {
 		return false, err
@@ -1705,29 +1718,8 @@ func (i *instance) ReviewTask(ctx context.Context, processInstanceID string, tas
 		// return false, error2.NewErrorWithString(error2.Internal, "Can not find task ")
 	}
 
-	flowInstanceEntity, err := i.instanceRepo.GetEntityByProcessInstanceID(i.db, processInstanceID)
-	if err != nil {
-		return false, err
-	}
-	if flowInstanceEntity == nil {
-		return false, error2.NewErrorWithString(error2.Internal, "Can not find flow instance data ")
-	}
-
-	entity, err := i.flowRepo.FindByID(i.db, flowInstanceEntity.FlowID)
-	if err != nil {
-		return false, err
-	}
-	if entity == nil {
-		return false, error2.NewErrorWithString(error2.Internal, "Can not find flow data ")
-	}
-
-	comments := map[string]interface{}{
-		"reviewResult": model.HandleType,
-		"reviewRemark": model.Remark,
-	}
-
 	// 保存数据到表单接口,（将表达式替换成真实值，权限判断和数值拼装）
-	if model.FormData != nil {
+	if model.HandleType == Agree || model.FormData != nil {
 		formData := i.task.FilterCanEditFormData(ctx, entity, flowInstanceEntity, task.NodeDefKey, model.FormData)
 		if len(formData) > 0 {
 			logger.Logger.Debug("这执行了update")
@@ -1746,6 +1738,11 @@ func (i *instance) ReviewTask(ctx context.Context, processInstanceID string, tas
 				return false, err
 			}
 		}
+	}
+
+	comments := map[string]interface{}{
+		"reviewResult": model.HandleType,
+		"reviewRemark": model.Remark,
 	}
 
 	params, err := i.GetInstanceVariableValues(ctx, flowInstanceEntity)
@@ -1832,6 +1829,7 @@ func (i *instance) ReviewTask(ctx context.Context, processInstanceID string, tas
 	if err != nil {
 		return false, err
 	}
+
 	return true, nil
 }
 

@@ -15,6 +15,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"github.com/quanxiang-cloud/flow/internal/convert"
 	"github.com/quanxiang-cloud/flow/pkg"
 	"github.com/quanxiang-cloud/flow/pkg/client"
@@ -215,6 +216,19 @@ func (n *DataCreate) InitEnd(ctx context.Context, eventData *EventData) (*pb.Nod
 	flow, err := n.FlowRepo.FindByProcessID(n.Db, eventData.ProcessID)
 	if err != nil {
 		return nil, err
+	}
+	if flow == nil {
+		flowProcessRelation, err := n.FlowProcessRelationRepo.FindByProcessID(n.Db, eventData.ProcessID)
+		if err != nil {
+			return nil, err
+		}
+		flow, err = n.FlowRepo.FindByID(n.Db, flowProcessRelation.FlowID)
+		if err != nil {
+			return nil, err
+		}
+		if flow == nil {
+			return nil, errors.New("send create form data not match flow")
+		}
 	}
 
 	bd := eventData.Shape.Data.BusinessData

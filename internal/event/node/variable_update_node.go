@@ -15,6 +15,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"github.com/quanxiang-cloud/flow/internal/convert"
 	"github.com/quanxiang-cloud/flow/pkg/config"
 	"github.com/quanxiang-cloud/flow/pkg/utils"
@@ -38,6 +39,19 @@ func (n *VariableUpdate) InitBegin(ctx context.Context, eventData *EventData) (*
 	flow, err := n.FlowRepo.FindByProcessID(n.Db, eventData.ProcessID)
 	if err != nil {
 		return nil, err
+	}
+	if flow == nil {
+		flowProcessRelation, err := n.FlowProcessRelationRepo.FindByProcessID(n.Db, eventData.ProcessID)
+		if err != nil {
+			return nil, err
+		}
+		flow, err = n.FlowRepo.FindByID(n.Db, flowProcessRelation.FlowID)
+		if err != nil {
+			return nil, err
+		}
+		if flow == nil {
+			return nil, errors.New("variable update node not match flow")
+		}
 	}
 	formShape, err := convert.GetShapeByChartType(flow.BpmnText, convert.FormData)
 	if err != nil {
