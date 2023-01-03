@@ -503,6 +503,15 @@ func (n *WebHook) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEv
 			inputs = append(inputs, input)
 		}
 	}
+	if hookType == "request" {
+		var api map[string]interface{}
+		if v := conf["api"]; v != nil {
+			api = v.(map[string]interface{})
+		}
+		path = utils.Strval(api["value"])
+	} else {
+		path = utils.Strval(conf["sendUrl"])
+	}
 	v := url.Values{}
 	if flow.TriggerMode == "FORM_DATA" {
 		formShape, err := convert.GetShapeByChartType(flow.BpmnText, convert.FormData)
@@ -571,16 +580,6 @@ func (n *WebHook) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEv
 		}
 
 		// gen req
-
-		if hookType == "request" {
-			var api map[string]interface{}
-			if v := conf["api"]; v != nil {
-				api = v.(map[string]interface{})
-			}
-			path = utils.Strval(api["value"])
-		} else {
-			path = utils.Strval(conf["sendUrl"])
-		}
 
 		for _, e := range inputs {
 			if e.Name == "" {
@@ -697,8 +696,6 @@ func (n *WebHook) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEv
 
 		}
 	} else {
-		mp := conf["api"].(map[string]interface{})
-		path = mp["value"].(string)
 		for _, e := range inputs {
 			if e.In == convert.Header {
 				val, err := n.webHookCal(ctx, e, nil, "")
