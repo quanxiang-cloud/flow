@@ -1482,90 +1482,91 @@ func (f *flow) AppReplicationImport(ctx context.Context, req *AppReplicationImpo
 		return false, err
 	}
 	logger.Logger.Info(req)
-	for _, flow := range flows {
+	for k := range flows {
 		// replace variables
-		flow.BpmnText = strings.Replace(flow.BpmnText, flow.AppID, req.AppID, -1)
+		flows[k].BpmnText = strings.Replace(flows[k].BpmnText, flows[k].AppID, req.AppID, -1)
 		// for k, v := range req.FormID {
 		// 	flow.BpmnText = strings.Replace(flow.BpmnText, k, v, -1)
 		// }
 
-		s, err := convert.GetShapeByChartType(flow.BpmnText, convert.FormData)
-		if err != nil {
-			return false, err
-		}
-		formID := s.Data.BusinessData["form"].(map[string]interface{})["value"].(string)
-
 		// save flow
-		flow.ID = id2.GenID()
-		flow.ModifyTime = time2.Now()
-		flow.AppStatus = mysql.AppActiveStatus
-		flow.AppID = req.AppID
-		flow.FormID = formID
-		flow.CreatorID = userID
-		flow.ModifierID = userID
-		err = f.flowRepo.Create2(f.db, &flow)
+		flows[k].ID = id2.GenID()
+		flows[k].ModifyTime = time2.Now()
+		flows[k].AppStatus = mysql.AppActiveStatus
+		flows[k].AppID = req.AppID
+		flows[k].CreatorID = userID
+		flows[k].ModifierID = userID
+		err = f.flowRepo.Create2(f.db, &flows[k])
 		if err != nil {
 			return false, err
 		}
 
 		// deploy flow
-		if flow.Status == models.ENABLE {
+		if flows[k].Status == models.ENABLE {
 			// 自动发布流程
-			processID, formulaFields, err := f.deploy(ctx, &flow)
+			processID, formulaFields, err := f.deploy(ctx, &flows[k])
 			if err != nil {
 				continue
 			}
 			if processID == "" {
 				continue
 			}
-			flow.ProcessID = processID
-			err = f.flowRepo.UpdateFlow(tx, &flow)
+			flows[k].ProcessID = processID
+			err = f.flowRepo.UpdateFlow(tx, &flows[k])
 			if err != nil {
 				return false, err
 			}
 
-			flow.SourceID = flow.ID
-			flow.ID = id2.GenID()
-			if err := f.flowRepo.Create2(tx, &flow); err != nil {
+			flows[k].SourceID = flows[k].ID
+			flows[k].ID = id2.GenID()
+			if err := f.flowRepo.Create2(tx, &flows[k]); err != nil {
 				continue
 			}
 
-			if err = checkChartJSON(s); err != nil {
-				continue
-			}
-			// add new trigger rule
-			rule, err := json.Marshal(s.Data.BusinessData)
-			if err != nil {
-				continue
-			}
-			ruleOne, err := f.triggerRuleRepo.FindByFormIDAndDFlowID(f.db, flow.FormID, flow.ID)
-			if err != nil {
-				continue
-			}
-			if ruleOne == nil {
-				ruleStr := string(rule)
-				ftr := &models.TriggerRule{
-					Rule:   ruleStr,
-					FlowID: flow.ID,
-					FormID: formID,
+			if flows[k].TriggerMode == "FORM_DATA" {
+				s, err := convert.GetShapeByChartType(flows[k].BpmnText, convert.FormData)
+				if err != nil {
+					return false, err
 				}
-				ftr.CreatorID = userID
-				ftr.CreateTime = time2.Now()
-				if err = f.triggerRuleRepo.Create(tx, ftr); err != nil {
+
+				if err = checkChartJSON(s); err != nil {
 					continue
 				}
-			} else {
-				err := f.triggerRuleRepo.Update(tx, ruleOne.ID, map[string]interface{}{
-					"rule": string(rule),
-				})
+				// add new trigger rule
+				rule, err := json.Marshal(s.Data.BusinessData)
 				if err != nil {
 					continue
 				}
+				ruleOne, err := f.triggerRuleRepo.FindByFormIDAndDFlowID(f.db, flows[k].FormID, flows[k].ID)
+				if err != nil {
+					continue
+				}
+				if ruleOne == nil {
+					ruleStr := string(rule)
+					ftr := &models.TriggerRule{
+						Rule:   ruleStr,
+						FlowID: flows[k].ID,
+						FormID: flows[k].FormID,
+					}
+					ftr.CreatorID = userID
+					ftr.CreateTime = time2.Now()
+					if err = f.triggerRuleRepo.Create(tx, ftr); err != nil {
+						continue
+					}
+				} else {
+					err := f.triggerRuleRepo.Update(tx, ruleOne.ID, map[string]interface{}{
+						"rule": string(rule),
+					})
+					if err != nil {
+						continue
+					}
+				}
 			}
+
 			// sync variable list
-			for _, variable := range flow.Variables {
+			for _, variable := range flows[k].Variables {
 				if variable.Type == "CUSTOM" {
-					variable.FlowID = flow.ID
+					variable.FlowID = flows[k].ID
 					variable.CreatorID = userID
 					variable.CreateTime = time2.Now()
 					if err := f.variablesRepo.Create(tx, variable); err != nil {
@@ -1579,8 +1580,8 @@ func (f *flow) AppReplicationImport(ctx context.Context, req *AppReplicationImpo
 			if formulaFieldsMap != nil {
 				for key, value := range formulaFieldsMap {
 					formField := &models.FormField{
-						FlowID:         flow.ID,
-						FormID:         formID,
+						FlowID:         flows[k].ID,
+						FormID:         flows[k].FormID,
 						FieldName:      key,
 						FieldValuePath: value.(string),
 					}
