@@ -20,7 +20,9 @@ import (
 	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
 	"github.com/quanxiang-cloud/flow/pkg/utils"
 	"github.com/quanxiang-cloud/flow/rpc/pb"
+	"regexp"
 	"strconv"
+	"strings"
 )
 
 // Letter struct
@@ -110,11 +112,74 @@ func (n *Letter) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEve
 	if err != nil {
 		return nil, err
 	}
+	var content = ""
+	// replace content
+	content = utils.Strval(bd["content"])
+	compile := regexp.MustCompile(`\$\{(.*?)\}`)
+	allString := compile.FindAllStringSubmatch(content, -1)
+
+	dataReq := client.FormDataConditionModel{
+		AppID:   instance.AppID,
+		TableID: instance.FormID,
+		DataID:  instance.FormInstanceID,
+	}
+	for k := range allString {
+
+		s := allString[k][1]
+		split := strings.Split(s, ".")
+		content = strings.Replace(content, allString[k][1], split[0], -1)
+		if len(split) == 3 {
+			dataReq.Ref = map[string]interface{}{
+				split[0]: map[string]interface{}{
+					"appID":   instance.AppID,
+					"tableID": split[1],
+					"type":    split[2],
+				},
+			}
+		}
+		if len(split) == 5 {
+			dataReq.Ref = map[string]interface{}{
+				split[0]: map[string]interface{}{
+					"appID":         instance.AppID,
+					"tableID":       split[1],
+					"type":          split[2],
+					"sourceFieldId": split[3],
+					"aggType":       split[4],
+				},
+			}
+		}
+	}
+
+	dataResp, err := n.FormAPI.GetFormData(ctx, dataReq)
+	if err != nil {
+		return nil, err
+	}
+	if dataResp == nil {
+		return nil, err
+	}
+
+	value := n.Flow.FormatFormValue(instance, dataResp)
+	var fieldType map[string]interface{}
+	if v := bd["fieldType"]; v != nil {
+		fieldType = v.(map[string]interface{})
+	}
+	for k, v := range value {
+		t := fieldType[k]
+		if t == "datepicker" {
+			vt := v.(string)
+			if strings.Contains(vt, ".000Z") {
+				vt = strings.Replace(vt, ".000Z", "+0000", 1)
+			}
+			v = utils.ChangeISO8601ToBjTime(vt)
+		}
+		content = strings.Replace(content, "${"+k+"}", utils.Strval(v), 1)
+	}
+
 	web := client.Web{
 		IsSend: true,
 		Title:  utils.Strval(bd["title"]),
 		Contents: client.Contents{
-			Content: utils.Strval(bd["content"]),
+			Content: content,
 		},
 		Receivers: recivers,
 		Types:     types,

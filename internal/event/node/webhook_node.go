@@ -17,15 +17,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/quanxiang-cloud/flow/internal/convert"
 	"github.com/quanxiang-cloud/flow/internal/models"
 	"github.com/quanxiang-cloud/flow/pkg/client"
 	"github.com/quanxiang-cloud/flow/pkg/config"
+	"github.com/quanxiang-cloud/flow/pkg/redis"
 	"github.com/quanxiang-cloud/flow/pkg/utils"
 	"github.com/quanxiang-cloud/flow/rpc/pb"
 	"net/url"
 	"reflect"
 	"strings"
+	"time"
 )
 
 // WebHook struct
@@ -44,6 +47,7 @@ func NewWebHook(conf *config.Configs, node *Node) *WebHook {
 
 // InitBegin event
 func (n *WebHook) InitBegin(ctx context.Context, eventData *EventData) (*pb.NodeEventRespData, error) {
+	fmt.Println("================执行b")
 	//if !n.CheckRefuse(ctx, n.Db, eventData.ProcessID) {
 	//	return nil, nil
 	//}
@@ -452,6 +456,7 @@ func (n *WebHook) apiMap(apiMap map[string]interface{}) map[string]interface{} {
 
 // InitEnd event
 func (n *WebHook) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEventRespData, error) {
+	fmt.Println("================执行e")
 	//if !n.CheckRefuse(ctx, n.Db, eventData.ProcessInstanceID) {
 	//	return nil, nil
 	//}
@@ -881,6 +886,8 @@ func (n *WebHook) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEv
 			return nil, err
 		}
 	}
+	fmt.Println("================执行e over")
+	redis.ClusterClient.SetEX(ctx, "flow:node:"+eventData.ProcessInstanceID+":"+eventData.NodeDefKey, "over", 20*time.Second)
 	return nil, nil
 }
 

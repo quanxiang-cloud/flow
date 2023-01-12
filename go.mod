@@ -7,6 +7,7 @@ require (
 	github.com/bmizerany/assert v0.0.0-20160611221934-b7ed37b82869
 	github.com/gin-gonic/gin v1.7.2
 	github.com/go-playground/validator/v10 v10.4.1
+	github.com/go-redis/redis v6.15.7+incompatible
 	github.com/go-redis/redis/v8 v8.9.0
 	github.com/google/uuid v1.1.2
 	github.com/olivere/elastic/v7 v7.0.32

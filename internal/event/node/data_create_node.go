@@ -20,8 +20,10 @@ import (
 	"github.com/quanxiang-cloud/flow/pkg"
 	"github.com/quanxiang-cloud/flow/pkg/client"
 	"github.com/quanxiang-cloud/flow/pkg/config"
+	"github.com/quanxiang-cloud/flow/pkg/redis"
 	"github.com/quanxiang-cloud/flow/pkg/utils"
 	"github.com/quanxiang-cloud/flow/rpc/pb"
+	"time"
 )
 
 // DataCreate struct
@@ -343,6 +345,7 @@ func (n *DataCreate) InitEnd(ctx context.Context, eventData *EventData) (*pb.Nod
 	if err != nil {
 		return nil, err
 	}
+	redis.ClusterClient.SetEX(ctx, "flow:node:"+eventData.ProcessInstanceID+":"+eventData.NodeDefKey, "over", 20*time.Second)
 	return nil, nil
 
 }

@@ -22,8 +22,10 @@ import (
 	"github.com/quanxiang-cloud/flow/pkg/client"
 	"github.com/quanxiang-cloud/flow/pkg/config"
 	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
+	"github.com/quanxiang-cloud/flow/pkg/redis"
 	"github.com/quanxiang-cloud/flow/pkg/utils"
 	"github.com/quanxiang-cloud/flow/rpc/pb"
+	"time"
 )
 
 // DataUpdate struct
@@ -387,7 +389,7 @@ func (n *DataUpdate) InitBegin(ctx context.Context, eventData *EventData) (*pb.N
 
 // InitEnd event
 func (n *DataUpdate) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEventRespData, error) {
-	logger.Logger.Debug("init update form end")
+	logger.Logger.Info("---------init update form end")
 	flow, err := n.FlowRepo.FindByProcessID(n.Db, eventData.ProcessID)
 	if err != nil {
 		return nil, err
@@ -405,6 +407,45 @@ func (n *DataUpdate) InitEnd(ctx context.Context, eventData *EventData) (*pb.Nod
 			return nil, errors.New("send update form data not match flow")
 		}
 	}
+	var pidNodefkey = ""
+	creatModle, err := convert.GetShapeByChartType(flow.BpmnText, convert.TableDataCreate)
+	if creatModle != nil {
+		for _, v := range creatModle.Data.NodeData.ChildrenID {
+			if v == eventData.NodeDefKey {
+				pidNodefkey = creatModle.ID
+				break
+			}
+		}
+	}
+	webhookModle, err := convert.GetShapeByChartType(flow.BpmnText, convert.WebHook)
+	if webhookModle != nil {
+		for _, v := range webhookModle.Data.NodeData.ChildrenID {
+			if v == eventData.NodeDefKey {
+				pidNodefkey = webhookModle.ID
+				break
+			}
+		}
+	}
+	if pidNodefkey != "" {
+		var i = 0
+		for {
+			get, err := redis.ClusterClient.Get(ctx, "flow:node:"+eventData.ProcessInstanceID+":"+eventData.NodeDefKey).Result()
+			if err != nil {
+				fmt.Println(err)
+			}
+			if get == "over" {
+				break
+			}
+			logger.Logger.Info("等待上个节点执行完成---", pidNodefkey)
+			i++
+			if i >= 13 {
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+
+	}
+
 	formShape, err := convert.GetShapeByChartType(flow.BpmnText, convert.FormData)
 	if err != nil {
 		return nil, err
@@ -430,6 +471,13 @@ func (n *DataUpdate) InitEnd(ctx context.Context, eventData *EventData) (*pb.Nod
 	variables, err := n.Instance.GetInstanceVariableValues(ctx, instance)
 	if err != nil {
 		return nil, err
+	}
+	instanceVariables, err := n.InstanceVariablesRepo.FindVariablesByProcessInstanceID(n.Db, eventData.ProcessInstanceID)
+	if err != nil {
+		return nil, err
+	}
+	for k := range instanceVariables {
+		variables[instanceVariables[k].Code] = instanceVariables[k].Value
 	}
 
 	targetTableID := utils.Strval(bd["targetTableId"])
@@ -584,9 +632,9 @@ func (n *DataUpdate) InitEnd(ctx context.Context, eventData *EventData) (*pb.Nod
 				return nil, nil
 			}
 
-			fmt.Println("updateNode formData:" + utils.Strval(dataResp))
-			fmt.Println("updateNode selectField:" + utils.Strval(dataResp[selectField]))
-			fmt.Println("updateNode updateReq:" + utils.Strval(updateReq))
+			logger.Logger.Info("updateNode formData:" + utils.Strval(dataResp))
+			logger.Logger.Info("updateNode selectField:" + utils.Strval(dataResp[selectField]))
+			logger.Logger.Info("updateNode updateReq:" + utils.Strval(updateReq))
 			if selectFieldType == "associated_records" || selectFieldType == "foreign_table" { // 外表
 				targetTableID = selectFieldTableID
 				updateIDs = utils.ChangeInterfaceToIDArray(dataResp[selectField])
@@ -621,10 +669,10 @@ func (n *DataUpdate) InitEnd(ctx context.Context, eventData *EventData) (*pb.Nod
 				updateReq = make(map[string]interface{}, 0)
 			}
 
-			fmt.Println("updateNode updateIDs:" + utils.Strval(updateIDs))
-			fmt.Println("updateNode updateReq:" + utils.Strval(updateReq))
+			logger.Logger.Info("updateNode updateIDs:" + utils.Strval(updateIDs))
+			logger.Logger.Info("updateNode updateReq:" + utils.Strval(updateReq))
 		} else { // 非本表
-			fmt.Println("updateNode filter updateIDs:" + utils.Strval(updateIDs))
+			logger.Logger.Info("updateNode filter updateIDs:" + utils.Strval(updateIDs))
 			if len(updateIDs) > 0 {
 				for _, updateID := range updateIDs {
 					updateReq2 := make(map[string]interface{}, 0)
@@ -653,9 +701,9 @@ func (n *DataUpdate) InitEnd(ctx context.Context, eventData *EventData) (*pb.Nod
 						return nil, nil
 					}
 
-					fmt.Println("updateNode formData:" + utils.Strval(dataResp))
-					fmt.Println("updateNode selectField:" + utils.Strval(dataResp[selectField]))
-					fmt.Println("updateNode updateReq:" + utils.Strval(updateReq))
+					logger.Logger.Info("updateNode formData:" + utils.Strval(dataResp))
+					logger.Logger.Info("updateNode selectField:" + utils.Strval(dataResp[selectField]))
+					logger.Logger.Info("updateNode updateReq:" + utils.Strval(updateReq))
 
 					if selectFieldType == "associated_records" || selectFieldType == "foreign_table" { // 外表
 						targetTableID2 = selectFieldTableID
@@ -692,8 +740,8 @@ func (n *DataUpdate) InitEnd(ctx context.Context, eventData *EventData) (*pb.Nod
 						}
 					}
 
-					fmt.Println("updateNode updateIDs:" + utils.Strval(updateIDs2))
-					fmt.Println("updateNode updateReq:" + utils.Strval(updateReq2))
+					logger.Logger.Info("updateNode updateIDs:" + utils.Strval(updateIDs2))
+					logger.Logger.Info("updateNode updateReq:" + utils.Strval(updateReq2))
 					ctx = pkg.SetRequestID2(ctx, instance.RequestID)
 					err = n.FormAPI.UpdateData(ctx, instance.AppID, targetTableID2, "", client.UpdateEntity{
 						Entity: updateReq2,

@@ -24,6 +24,7 @@ import (
 	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
 	"github.com/quanxiang-cloud/flow/pkg/utils"
 	"github.com/quanxiang-cloud/flow/rpc/pb"
+	"regexp"
 	"strings"
 )
 
@@ -154,12 +155,42 @@ func (n *Email) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEven
 	mesAttachments := make([]map[string]interface{}, 0)
 	if flow.TriggerMode == "FORM_DATA" {
 		logger.Logger.Info("发送表单触发邮件，processID=", eventData.ProcessID, "emailDefKey=", eventData.NodeDefKey)
+
+		content = utils.Strval(bd["content"])
+		compile := regexp.MustCompile(`\$\{(.*?)\}`)
+		allString := compile.FindAllStringSubmatch(content, -1)
+
 		dataReq := client.FormDataConditionModel{
 			AppID:   instance.AppID,
 			TableID: instance.FormID,
 			DataID:  instance.FormInstanceID,
 		}
+		for k := range allString {
 
+			s := allString[k][1]
+			split := strings.Split(s, ".")
+			content = strings.Replace(content, allString[k][1], split[0], -1)
+			if len(split) == 3 {
+				dataReq.Ref = map[string]interface{}{
+					split[0]: map[string]interface{}{
+						"appID":   instance.AppID,
+						"tableID": split[1],
+						"type":    split[2],
+					},
+				}
+			}
+			if len(split) == 5 {
+				dataReq.Ref = map[string]interface{}{
+					split[0]: map[string]interface{}{
+						"appID":         instance.AppID,
+						"tableID":       split[1],
+						"type":          split[2],
+						"sourceFieldId": split[3],
+						"aggType":       split[4],
+					},
+				}
+			}
+		}
 		dataResp, err := n.FormAPI.GetFormData(ctx, dataReq)
 		if err != nil {
 			return nil, err
@@ -167,9 +198,7 @@ func (n *Email) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEven
 		if dataResp == nil {
 			return nil, err
 		}
-
 		// replace content
-		content = utils.Strval(bd["content"])
 		value := n.Flow.FormatFormValue(instance, dataResp)
 		var fieldType map[string]interface{}
 		if v := bd["fieldType"]; v != nil {
