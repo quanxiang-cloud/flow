@@ -480,7 +480,7 @@ func checkChart(s ShapeModel, formID string) error {
 func getUsers(s ShapeModel) []string {
 	userIDs := make([]string, 0)
 	users := GetValueFromBusinessData(s, "basicConfig.approvePersons.users")
-	if users == nil {
+	if users == nil || users == "" {
 		return userIDs
 	}
 	for _, user := range users.([]interface{}) {
@@ -493,14 +493,14 @@ func getUsers(s ShapeModel) []string {
 func getGroups(s ShapeModel) []string {
 	groups := make([]string, 0)
 	roles := GetValueFromBusinessData(s, "basicConfig.approvePersons.roles")
-	if roles != nil {
+	if roles != nil && roles != "" {
 		for _, role := range roles.([]interface{}) {
 			roleID := role.(map[string]interface{})["id"]
 			groups = append(groups, utils.StringJoins(internal.Role, "_", utils.Strval(roleID)))
 		}
 	}
 	departments := GetValueFromBusinessData(s, "basicConfig.approvePersons.departments")
-	if departments != nil {
+	if departments != nil && departments != "" {
 		for _, department := range departments.([]interface{}) {
 			departmentID := department.(map[string]interface{})["id"]
 			groups = append(groups, utils.StringJoins(internal.Dep, "_", utils.Strval(departmentID)))
