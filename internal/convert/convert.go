@@ -270,6 +270,9 @@ func GetTaskBasicConfigModel(shape *ShapeModel) *TaskBasicConfigModel {
 // GetValueFromBusinessData func
 func GetValueFromBusinessData(s ShapeModel, keyInfo string) interface{} {
 	data := s.Data.BusinessData
+	if len(data) == 0 {
+		return ""
+	}
 	keys := strings.Split(keyInfo, ".")
 	var tmp interface{}
 	for _, key := range keys {
