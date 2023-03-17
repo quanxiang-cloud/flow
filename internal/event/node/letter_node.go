@@ -15,14 +15,18 @@ package node
 
 import (
 	"context"
+	"fmt"
+	"github.com/pkg/errors"
 	"github.com/quanxiang-cloud/flow/pkg/client"
 	"github.com/quanxiang-cloud/flow/pkg/config"
 	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
+	"github.com/quanxiang-cloud/flow/pkg/redis"
 	"github.com/quanxiang-cloud/flow/pkg/utils"
 	"github.com/quanxiang-cloud/flow/rpc/pb"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Letter struct
@@ -87,6 +91,48 @@ func (n *Letter) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEve
 	//if !n.CheckRefuse(ctx, n.Db, eventData.ProcessInstanceID) {
 	//	return nil, nil
 	//}
+
+	flow, err := n.FlowRepo.FindByProcessID(n.Db, eventData.ProcessID)
+	if err != nil {
+		return nil, err
+	}
+	if flow == nil {
+		flowProcessRelation, err := n.FlowProcessRelationRepo.FindByProcessID(n.Db, eventData.ProcessID)
+		if err != nil {
+			return nil, err
+		}
+		flow, err = n.FlowRepo.FindByID(n.Db, flowProcessRelation.FlowID)
+		if err != nil {
+			return nil, err
+		}
+		if flow == nil {
+			return nil, errors.New("send update form data not match flow")
+		}
+	}
+	preNodeKey := CheckPreNode(flow.BpmnText, eventData.NodeDefKey)
+	if preNodeKey != "" {
+		if preNodeKey == "processBranchTarget" {
+			time.Sleep(6 * time.Second)
+		} else {
+			var i = 0
+			for {
+				get, err := redis.ClusterClient.Get(ctx, "flow:node:"+eventData.ProcessInstanceID+":"+preNodeKey).Result()
+				if err != nil {
+					fmt.Println(err)
+				}
+				if get == "over" {
+					break
+				}
+				logger.Logger.Info("等待上个节点执行完成---", preNodeKey)
+				i++
+				if i >= 13 {
+					break
+				}
+				time.Sleep(1 * time.Second)
+			}
+		}
+	}
+
 	instance, err := n.InstanceRepo.GetEntityByProcessInstanceID(n.Db, eventData.ProcessInstanceID)
 	if err != nil {
 		return nil, err
@@ -192,5 +238,6 @@ func (n *Letter) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEve
 	if err != nil {
 		return nil, err
 	}
+	redis.ClusterClient.SetEX(ctx, "flow:node:"+eventData.ProcessInstanceID+":"+eventData.NodeDefKey, "over", 20*time.Second)
 	return nil, nil
 }

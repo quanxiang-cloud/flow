@@ -77,3 +77,71 @@ func (n *Node) CheckRefuse(ctx context.Context, db *gorm.DB, processInstanceID s
 	}
 	return true
 }
+
+// NodeDataModel info
+type NodeDataModel struct {
+	Name                  string   `json:"name"`
+	BranchTargetElementID string   `json:"branchTargetElementID"`
+	ParentID              []string `json:"parentID"`
+	ChildrenID            []string `json:"childrenID"`
+	BranchID              string   `json:"branchID"`
+}
+
+// ShapeDataModel info
+type ShapeDataModel struct {
+	NodeData     NodeDataModel          `json:"nodeData"`
+	BusinessData map[string]interface{} `json:"businessData"`
+}
+
+// ShapeModel struct
+type ShapeModel struct {
+	ID     string         `json:"id"`
+	Type   string         `json:"type"`
+	Data   ShapeDataModel `json:"data"`
+	Source string         `json:"source"`
+	Target string         `json:"target"`
+}
+
+// ProcessModel struct
+type ProcessModel struct {
+	Version string       `json:"version"`
+	Shapes  []ShapeModel `json:"shapes"`
+}
+
+func GetFirstNode(p *ProcessModel) *ShapeModel {
+	for _, elem := range p.Shapes {
+		if elem.Type == "formData" {
+			return &elem
+		}
+	}
+	return nil
+}
+
+func GetNode(p *ProcessModel, id string) *ShapeModel {
+	for _, elem := range p.Shapes {
+		if elem.ID == id {
+			return &elem
+		}
+	}
+	return nil
+}
+
+func CheckPreNode(bpt string, nowNodeKey string) (preNodeKey string) {
+	p := &ProcessModel{}
+	err := json.Unmarshal([]byte(bpt), p)
+	if err != nil {
+		return ""
+	}
+	node := GetNode(p, nowNodeKey)
+	var res = ""
+	for k := range node.Data.NodeData.ParentID {
+		pNode := GetNode(p, node.Data.NodeData.ParentID[k])
+		switch pNode.Type {
+		case "tableDataCreate", "tableDataUpdate", "webhook", "email", "letter":
+			res = pNode.ID
+		case "processBranchTarget":
+			res = "processBranchTarget"
+		}
+	}
+	return res
+}

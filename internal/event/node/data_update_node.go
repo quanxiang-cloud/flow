@@ -410,43 +410,28 @@ func (n *DataUpdate) InitEnd(ctx context.Context, eventData *EventData) (*pb.Nod
 			return nil, errors.New("send update form data not match flow")
 		}
 	}
-	var pidNodefkey = ""
-	creatModle, err := convert.GetShapeByChartType(flow.BpmnText, convert.TableDataCreate)
-	if creatModle != nil {
-		for _, v := range creatModle.Data.NodeData.ChildrenID {
-			if v == eventData.NodeDefKey {
-				pidNodefkey = creatModle.ID
-				break
+	preNodeKey := CheckPreNode(flow.BpmnText, eventData.NodeDefKey)
+	if preNodeKey != "" {
+		if preNodeKey == "processBranchTarget" {
+			time.Sleep(6 * time.Second)
+		} else {
+			var i = 0
+			for {
+				get, err := redis.ClusterClient.Get(ctx, "flow:node:"+eventData.ProcessInstanceID+":"+preNodeKey).Result()
+				if err != nil {
+					fmt.Println(err)
+				}
+				if get == "over" {
+					break
+				}
+				logger.Logger.Info("等待上个节点执行完成---", preNodeKey)
+				i++
+				if i >= 13 {
+					break
+				}
+				time.Sleep(1 * time.Second)
 			}
 		}
-	}
-	webhookModle, err := convert.GetShapeByChartType(flow.BpmnText, convert.WebHook)
-	if webhookModle != nil {
-		for _, v := range webhookModle.Data.NodeData.ChildrenID {
-			if v == eventData.NodeDefKey {
-				pidNodefkey = webhookModle.ID
-				break
-			}
-		}
-	}
-	if pidNodefkey != "" {
-		var i = 0
-		for {
-			get, err := redis.ClusterClient.Get(ctx, "flow:node:"+eventData.ProcessInstanceID+":"+eventData.NodeDefKey).Result()
-			if err != nil {
-				fmt.Println(err)
-			}
-			if get == "over" {
-				break
-			}
-			logger.Logger.Info("等待上个节点执行完成---", pidNodefkey)
-			i++
-			if i >= 13 {
-				break
-			}
-			time.Sleep(1 * time.Second)
-		}
-
 	}
 
 	formShape, err := convert.GetShapeByChartType(flow.BpmnText, convert.FormData)
@@ -813,5 +798,6 @@ func (n *DataUpdate) InitEnd(ctx context.Context, eventData *EventData) (*pb.Nod
 	if err != nil {
 		return nil, err
 	}
+	redis.ClusterClient.SetEX(ctx, "flow:node:"+eventData.ProcessInstanceID+":"+eventData.NodeDefKey, "over", 20*time.Second)
 	return nil, nil
 }

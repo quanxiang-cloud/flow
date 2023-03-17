@@ -22,6 +22,7 @@ import (
 	"github.com/quanxiang-cloud/flow/internal/models"
 	"github.com/quanxiang-cloud/flow/pkg/client"
 	"github.com/quanxiang-cloud/flow/pkg/config"
+	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
 	"github.com/quanxiang-cloud/flow/pkg/redis"
 	"github.com/quanxiang-cloud/flow/pkg/utils"
 	"github.com/quanxiang-cloud/flow/rpc/pb"
@@ -477,6 +478,30 @@ func (n *WebHook) InitEnd(ctx context.Context, eventData *EventData) (*pb.NodeEv
 			return nil, errors.New("webhook node not match flow")
 		}
 	}
+	preNodeKey := CheckPreNode(flow.BpmnText, eventData.NodeDefKey)
+	if preNodeKey != "" {
+		if preNodeKey == "processBranchTarget" {
+			time.Sleep(6 * time.Second)
+		} else {
+			var i = 0
+			for {
+				get, err := redis.ClusterClient.Get(ctx, "flow:node:"+eventData.ProcessInstanceID+":"+preNodeKey).Result()
+				if err != nil {
+					fmt.Println(err)
+				}
+				if get == "over" {
+					break
+				}
+				logger.Logger.Info("等待上个节点执行完成---", preNodeKey)
+				i++
+				if i >= 13 {
+					break
+				}
+				time.Sleep(1 * time.Second)
+			}
+		}
+	}
+
 	// do req
 	queryFlag := false
 	requestBody := make(map[string]interface{})
