@@ -324,8 +324,9 @@ func (f *flow) DeleteFlow(ctx context.Context, flowID string, userID string) (bo
 	if flow.TriggerMode == convert.FormTime {
 		code := fmt.Sprintf("flow:%s_%s", convert.CallbackOfCron, flow.ID)
 		req := client.UpdateTaskStateReq{
-			Code:  code,
-			State: 2,
+			Code:    code,
+			State:   2,
+			TimeBar: flow.Cron,
 		}
 		err1 := f.dispatcher.UpdateState(ctx, req)
 		if err1 != nil {
@@ -773,8 +774,9 @@ func (f *flow) deleteFlowByAppID(ctx context.Context, appID string) error {
 		if flow.TriggerMode == convert.FormTime {
 			code := fmt.Sprintf("flow:%s_%s", convert.CallbackOfCron, flow.ID)
 			req := client.UpdateTaskStateReq{
-				Code:  code,
-				State: 2,
+				Code:    code,
+				State:   2,
+				TimeBar: flow.Cron,
 			}
 			err1 := f.dispatcher.UpdateState(ctx, req)
 			if err1 != nil {
@@ -1004,58 +1006,6 @@ func (f *flow) UpdateFlowStatus(ctx context.Context, req *PublishProcessReq, usr
 			flowStatusResp.Flag = false
 			return flowStatusResp, err
 		}
-		////// add new record
-		////fl.SourceID = fl.ID
-		//originalID := fl.ID
-		////fl.ID = id2.GenID()
-		////if err = f.flowRepo.Create(f.db, fl); err != nil {
-		////	flowStatusResp.Flag = false
-		////	return flowStatusResp, err
-		////}
-		//
-		//// sync variable list
-		//variables, err := f.variablesRepo.FindVariables(f.db, map[string]interface{}{
-		//	"flow_id": originalID,
-		//})
-		//if err != nil {
-		//	flowStatusResp.Flag = false
-		//	return flowStatusResp, err
-		//}
-		//if len(variables) > 0 {
-		//	for _, v := range variables {
-		//		v.FlowID = fl.ID
-		//		v.ID = id2.GenID()
-		//		if err = f.variablesRepo.Create(f.db, v); err != nil {
-		//			flowStatusResp.Flag = false
-		//			return flowStatusResp, err
-		//		}
-		//	}
-		//}
-		// 如果是定时的将任务注册或删除调度器
-		if fl.TriggerMode == convert.FormTime {
-			code := fmt.Sprintf("flow:%s_%s", convert.CallbackOfCron, req.ID)
-			req := client.TaskPostReq{
-				Code:    code,
-				Title:   "cron_" + fl.Name,
-				Type:    2,
-				TimeBar: fl.Cron,
-				State:   1,
-			}
-			err1 := f.dispatcher.TakePost(ctx, req)
-			if err1 != nil {
-				logger.Logger.Error("register dispatcher err,", err1)
-				code := fmt.Sprintf("flow:%s_%s", convert.CallbackOfCron, fl.ID)
-				dispReq := client.UpdateTaskStateReq{
-					Code:  code,
-					State: 1,
-				}
-				err1 := f.dispatcher.UpdateState(ctx, dispReq)
-				if err1 != nil {
-					logger.Logger.Error("unable flow update dispatcher state err,", err1)
-				}
-			}
-		}
-
 		// save form field with path
 		f.formFieldRepo.DeleteByFlowID(f.db, fl.ID)
 		if formulaFields != nil {
@@ -1088,19 +1038,49 @@ func (f *flow) UpdateFlowStatus(ctx context.Context, req *PublishProcessReq, usr
 			flowStatusResp.Flag = false
 			return flowStatusResp, err
 		}
-		f.updateFlowHistory(tx, fl.ID, usrID)
-		// 如果是定时的将任务注册或删除调度器
-		if fl.TriggerMode == convert.FormTime {
-			code := fmt.Sprintf("flow:%s_%s", convert.CallbackOfCron, fl.ID)
+		err = f.updateFlowHistory(tx, fl.ID, usrID)
+		if err != nil {
+			logger.Logger.Error("updateFlowHistory err", err)
+		}
+	}
+	// 如果是定时的将任务注册或删除调度器
+	if fl.TriggerMode == convert.FormTime {
+
+		code := fmt.Sprintf("flow:%s_%s", convert.CallbackOfCron, req.ID)
+		if req.Status == models.ENABLE {
+			dispReq := client.TaskPostReq{
+				Code:    code,
+				Title:   "cron_" + fl.Name,
+				Type:    2,
+				TimeBar: fl.Cron,
+				State:   1,
+			}
+			err1 := f.dispatcher.TakePost(ctx, dispReq)
+			if err1 != nil {
+				logger.Logger.Error("register dispatcher err,", err1)
+
+				dispStateReq := client.UpdateTaskStateReq{
+					Code:    code,
+					State:   1,
+					TimeBar: fl.Cron,
+				}
+				err1 := f.dispatcher.UpdateState(ctx, dispStateReq)
+				if err1 != nil {
+					logger.Logger.Error("unable flow update dispatcher state err,", err1)
+				}
+			}
+		} else {
 			dispReq := client.UpdateTaskStateReq{
-				Code:  code,
-				State: 2,
+				Code:    code,
+				State:   2,
+				TimeBar: fl.Cron,
 			}
 			err1 := f.dispatcher.UpdateState(ctx, dispReq)
 			if err1 != nil {
 				logger.Logger.Error("unable flow update dispatcher state err,", err1)
 			}
 		}
+
 	}
 	tx.Commit()
 	flowStatusResp.Flag = true

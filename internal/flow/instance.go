@@ -234,6 +234,8 @@ func (i *instance) SetDB(db *gorm.DB) {
 
 // StartFlow start flow
 func (i *instance) StartFlow(ctx context.Context, req *StartFlowModel) (string, error) {
+	marshal, _ := json.Marshal(req)
+	logger.Logger.Info("StartFlow req====", string(marshal))
 	flowEntity, err := i.flowRepo.FindByID(i.db, req.FlowID)
 	if err != nil {
 		return "", err
@@ -284,6 +286,9 @@ func (i *instance) StartFlow(ctx context.Context, req *StartFlowModel) (string, 
 		formData, err := i.formAPI.GetFormData(ctx, formReq)
 		if err != nil {
 			return "", error2.NewErrorWithString(error2.Internal, "Get form data error ")
+		}
+		if formData == nil || formData["_id"] == nil {
+			return "", error2.NewErrorWithString(error2.Internal, "Get form data is null ")
 		}
 		req.FormData = formData
 		processReq.UserID = req.UserID
@@ -1722,21 +1727,24 @@ func (i *instance) ReviewTask(ctx context.Context, processInstanceID string, tas
 	if model.HandleType == Agree || model.FormData != nil {
 		formData := i.task.FilterCanEditFormData(ctx, entity, flowInstanceEntity, task.NodeDefKey, model.FormData)
 		if len(formData) > 0 {
-			logger.Logger.Debug("这执行了update")
+			if entity, ok := formData["entity"]; entity != nil && ok {
+				logger.Logger.Debug("这执行了update")
 
-			saveFormDataReq := &client.UpdateEntity{}
-			formDataJSON, err := json.Marshal(formData)
-			if err == nil {
-				err = json.Unmarshal(formDataJSON, saveFormDataReq)
+				saveFormDataReq := &client.UpdateEntity{}
+				formDataJSON, err := json.Marshal(formData)
+				if err == nil {
+					err = json.Unmarshal(formDataJSON, saveFormDataReq)
+				}
+				if err != nil {
+					return false, err
+				}
+				ctx = pkg.SetRequestID2(ctx, flowInstanceEntity.RequestID)
+				err = i.formAPI.UpdateData(ctx, flowInstanceEntity.AppID, flowInstanceEntity.FormID, flowInstanceEntity.FormInstanceID, *saveFormDataReq, false)
+				if err != nil {
+					return false, err
+				}
 			}
-			if err != nil {
-				return false, err
-			}
-			ctx = pkg.SetRequestID2(ctx, flowInstanceEntity.RequestID)
-			err = i.formAPI.UpdateData(ctx, flowInstanceEntity.AppID, flowInstanceEntity.FormID, flowInstanceEntity.FormInstanceID, *saveFormDataReq, false)
-			if err != nil {
-				return false, err
-			}
+
 		}
 	}
 

@@ -60,9 +60,10 @@ type TaskPostReq struct {
 
 // UpdateTaskStateReq 修改任务状态[参数]
 type UpdateTaskStateReq struct {
-	TaskID string `json:"taskID"`
-	Code   string `json:"code"`
-	State  int    `json:"state"`
+	TaskID  string `json:"taskID"`
+	Code    string `json:"code"`
+	State   int    `json:"state"`
+	TimeBar string `json:"timeBar"`
 }
 
 func (d *dispatcher) UpdateState(ctx context.Context, req UpdateTaskStateReq) error {

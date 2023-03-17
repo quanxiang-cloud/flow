@@ -15,9 +15,11 @@ package node
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/quanxiang-cloud/flow/internal/convert"
+	"github.com/quanxiang-cloud/flow/internal/models"
 	"github.com/quanxiang-cloud/flow/pkg"
 	"github.com/quanxiang-cloud/flow/pkg/client"
 	"github.com/quanxiang-cloud/flow/pkg/config"
@@ -25,6 +27,7 @@ import (
 	"github.com/quanxiang-cloud/flow/pkg/redis"
 	"github.com/quanxiang-cloud/flow/pkg/utils"
 	"github.com/quanxiang-cloud/flow/rpc/pb"
+	"reflect"
 	"time"
 )
 
@@ -595,12 +598,49 @@ func (n *DataUpdate) InitEnd(ctx context.Context, eventData *EventData) (*pb.Nod
 		valueFrom := utils.Strval(updateRule["valueFrom"])
 		valueOf := updateRule["valueOf"]
 		formulaFields := updateRule["formulaFields"]
+		if instance.FormID != targetTableID {
+			newIntance := &models.Instance{}
+			newIntance.AppID = instance.AppID
+			newIntance.FormID = targetTableID
+			newIntance.FormInstanceID = updateIDs[0]
+			val, err := n.Instance.Cal(ctx, valueFrom, valueOf, formulaFields, newIntance, variables, formQueryRef, formDefKey)
+			if err != nil {
+				return nil, err
+			}
+			if val != nil {
+				of := reflect.TypeOf(val)
+				switch of.Kind() {
+				case reflect.Struct, reflect.Map:
+					m := make(map[string]interface{})
+					marshal, _ := json.Marshal(val)
+					json.Unmarshal(marshal, &m)
+					updateReq[fieldName] = m["result"]
+				case reflect.String, reflect.Float32, reflect.Float64, reflect.Int, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int64, reflect.Bool:
+					updateReq[fieldName] = val
+				}
 
-		val, err := n.Instance.Cal(ctx, valueFrom, valueOf, formulaFields, instance, variables, formQueryRef, formDefKey)
-		if err != nil {
-			return nil, err
+			}
+
+		} else {
+			val, err := n.Instance.Cal(ctx, valueFrom, valueOf, formulaFields, instance, variables, formQueryRef, formDefKey)
+			if err != nil {
+				return nil, err
+			}
+			if val != nil {
+				of := reflect.TypeOf(val)
+				switch of.Kind() {
+				case reflect.Struct, reflect.Map:
+					m := make(map[string]interface{})
+					marshal, _ := json.Marshal(val)
+					json.Unmarshal(marshal, &m)
+					updateReq[fieldName] = m["result"]
+				case reflect.String, reflect.Float32, reflect.Float64, reflect.Int, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int64, reflect.Bool:
+					updateReq[fieldName] = val
+				}
+			}
+
 		}
-		updateReq[fieldName] = val
+
 	}
 
 	selectField := utils.Strval(bd["selectField"])               // 普通组件为空，高级组件为字段名
