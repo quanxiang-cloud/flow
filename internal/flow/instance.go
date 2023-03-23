@@ -240,6 +240,10 @@ func (i *instance) StartFlow(ctx context.Context, req *StartFlowModel) (string, 
 	if err != nil {
 		return "", err
 	}
+	if flowEntity == nil {
+		logger.Logger.Error("StartFlow flow is nil")
+		return "", errors.New("StartFlow flow is nil")
+	}
 	if flowEntity.Status != models.ENABLE {
 		return "", nil
 	}
@@ -1690,7 +1694,7 @@ func (i *instance) ReviewTask(ctx context.Context, processInstanceID string, tas
 		}
 		for k := range variables {
 			if variables[k].Type == "SYSTEM" && variables[k].Name == "SYS_AUDIT_BOOL" {
-				err := i.instanceVariablesRepo.Update(i.db, variables[0].ID, map[string]interface{}{
+				err := i.instanceVariablesRepo.Update(i.db, variables[k].ID, map[string]interface{}{
 					"value": value,
 				})
 				if err != nil {
@@ -2595,7 +2599,12 @@ func (i *instance) ProcessHistories(ctx context.Context, processInstanceID strin
 		}
 		for i, r := range records { // 去除加签的record
 			if r.HandleType == opAddSign {
-				records = append(records[:i], records[i+1:]...)
+				if i == len(records)-1 {
+					records = append(records[:i])
+				} else {
+					records = append(records[:i], records[i+1:]...)
+				}
+
 			}
 		}
 
