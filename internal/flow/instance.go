@@ -2571,7 +2571,7 @@ func (i *instance) ProcessHistories(ctx context.Context, processInstanceID strin
 		}
 		if len(records) == 1 && records[0].HandleType == opAddSign { // 当前节点只有加签操作
 			step.Status = opAddSign
-
+			step.TaskName = "加签"
 			var tempMap map[string]string
 			err := json.Unmarshal([]byte(records[0].CorrelationData), &tempMap)
 			if err != nil {
