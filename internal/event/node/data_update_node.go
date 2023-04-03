@@ -586,8 +586,15 @@ func (n *DataUpdate) InitEnd(ctx context.Context, eventData *EventData) (*pb.Nod
 		if instance.FormID != targetTableID {
 			newIntance := &models.Instance{}
 			newIntance.AppID = instance.AppID
-			newIntance.FormID = targetTableID
-			newIntance.FormInstanceID = updateIDs[0]
+			if valueFrom == "currentFormValue" {
+
+				newIntance.FormID = instance.FormID
+				newIntance.FormInstanceID = instance.FormInstanceID
+			} else {
+				newIntance.FormID = targetTableID
+				newIntance.FormInstanceID = updateIDs[0]
+			}
+
 			val, err := n.Instance.Cal(ctx, valueFrom, valueOf, formulaFields, newIntance, variables, formQueryRef, formDefKey)
 			if err != nil {
 				return nil, err

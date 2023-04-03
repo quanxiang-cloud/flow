@@ -2599,7 +2599,7 @@ func (i *instance) ProcessHistories(ctx context.Context, processInstanceID strin
 		}
 		for i, r := range records { // 去除加签的record
 			if r.HandleType == opAddSign {
-				if i == len(records)-1 {
+				if i >= len(records)-1 {
 					records = append(records[:i])
 				} else {
 					records = append(records[:i], records[i+1:]...)
