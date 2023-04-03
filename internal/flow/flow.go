@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/quanxiang-cloud/flow/internal"
@@ -1239,11 +1240,38 @@ func (f *flow) GetTaskHandleUserIDs2(ctx context.Context, approvePersonsStr inte
 			}
 		}
 
+	} else if "processVariable" == approvePersons.Type {
+		//todo 处理流程变量的数据，校验邮箱或者可能是人的id
+		if approvePersons.VariablePath != "" {
+			split := strings.Split(approvePersons.VariablePath, ".")
+			variables, err := f.instanceVariablesRepo.FindVariablesByProcessInstanceID(f.db, flowInstanceEntity.ProcessInstanceID)
+			if err != nil {
+				return nil, nil
+			}
+			for k := range variables {
+				if variables[k].Code == split[1] {
+					if checkEmail(variables[k].Value) {
+						assigneeList = append(assigneeList, variables[k].Value)
+					} else {
+						userInfo, _ := f.identityAPI.FindUserByID(ctx, variables[k].Value)
+						assigneeList = append(assigneeList, userInfo.ID)
+					}
+				}
+			}
+		}
 	}
 
 	handleUserIds = append(handleUserIds, assigneeList...)
 
 	return utils.RemoveReplicaSliceString(handleUserIds), utils.RemoveReplicaSliceString(assigneeList)
+}
+
+const emailRegexString = `^[0-9a-z][_.0-9a-z-]{0,31}@([0-9a-z][0-9a-z-]{0,30}[0-9a-z]\.){1,4}[a-z]{2,4}$`
+
+func checkEmail(userName string) bool {
+	lower := strings.ToLower(userName)
+	emailCompile := regexp.MustCompile(emailRegexString)
+	return emailCompile.MatchString(lower)
 }
 
 func (f *flow) GetTaskHandleUsers(ctx context.Context, shape *convert.ShapeModel, flowInstanceEntity *models.Instance) []*client.UserInfoResp {
@@ -1264,6 +1292,13 @@ func (f *flow) getTaskHandleUsersByIDs(ctx context.Context, handleUserIds []stri
 	handleUsers := make([]*client.UserInfoResp, 0)
 	for _, user := range userMap {
 		handleUsers = append(handleUsers, user)
+	}
+	for k := range handleUserIds {
+		if checkEmail(handleUserIds[k]) {
+			handleUsers = append(handleUsers, &client.UserInfoResp{
+				Email: handleUserIds[k],
+			})
+		}
 	}
 	return handleUsers
 }

@@ -573,12 +573,13 @@ type TaskBasicConfigModel struct {
 // ApprovePersonsModel struct
 type ApprovePersonsModel struct {
 	// 人员'person' | 表单字段'field' | 岗位'position' | 上级领导'superior' | 部门负责人'leadOfDepartment'
-	Type        string                   `json:"type"`
-	Users       []map[string]interface{} `json:"users"`
-	Roles       []map[string]interface{} `json:"roles"`
-	Departments []map[string]interface{} `json:"departments"`
-	Positions   []string                 `json:"positions"` // 岗位id集合
-	Fields      []string                 `json:"fields"`    // 表单字段集合
+	Type         string                   `json:"type"`
+	Users        []map[string]interface{} `json:"users"`
+	Roles        []map[string]interface{} `json:"roles"`
+	Departments  []map[string]interface{} `json:"departments"`
+	Positions    []string                 `json:"positions"` // 岗位id集合
+	Fields       []string                 `json:"fields"`    // 表单字段集合
+	VariablePath string                   `json:"variablePath"`
 }
 
 // TaskTimeRuleModel struct
