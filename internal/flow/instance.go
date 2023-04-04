@@ -326,7 +326,7 @@ func (i *instance) StartFlow(ctx context.Context, req *StartFlowModel) (string, 
 		flowInstanceEntity.FormInstanceID = req.FormData["_id"].(string)
 		flowInstanceEntity.ApplyUserID = req.UserID
 		flowInstanceEntity.BaseModel.CreatorID = req.UserID
-		flowInstanceEntity.RequestID = pkg.STDRequestID2(ctx)
+		flowInstanceEntity.RequestID = pkg.STDRequestID2(ctx) + "_" + req.FlowID
 
 	}
 

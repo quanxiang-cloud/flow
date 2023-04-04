@@ -106,7 +106,7 @@ func POST2(ctx context.Context, client *http.Client, uri string, params interfac
 	req.Header.Add(pkg.GlobalXID, pkg.STDGlobalXID(ctx))
 	if headers != nil {
 		for k, v := range headers {
-			req.Header.Add(k, v)
+			req.Header.Set(k, v)
 		}
 	}
 
