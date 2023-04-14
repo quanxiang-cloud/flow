@@ -226,7 +226,7 @@ func (or *operationRecord) processTaskStep(ctx context.Context, instance *models
 		fallthrough
 	case opRead:
 		fallthrough
-	case opAutoReview:
+	case opAutoReview, "AUTO_REFUSE", "AUTO_AGREE":
 		fallthrough
 	case opAutoCC:
 		fallthrough
@@ -369,7 +369,7 @@ func (or *operationRecord) processBaseTaskStep(ctx context.Context, instance *mo
 
 		// 该节点的类型
 		var timeStr string
-		if handleTaskModel.HandleType == opAutoReview {
+		if handleTaskModel.HandleType == "AUTO_REFUSE" || handleTaskModel.HandleType == "AUTO_AGREE" {
 			timeStr = time2.UnixToISO8601(time.Now().Unix() + 5)
 		} else {
 			timeStr = time2.Now()

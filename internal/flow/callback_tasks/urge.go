@@ -251,9 +251,9 @@ func (u *Urge) dealLine(ctx context.Context, callback models.DispatcherCallback)
 		if err != nil {
 			return err
 		}
-
+		var res = ""
 		for _, task := range tasksResp.Data {
-			u.task.AutoReviewTask(ctx, flow, instance, task, "", params)
+			res, _ = u.task.AutoReviewTask(ctx, flow, instance, task, "", params)
 		}
 		processInstance, err := u.processAPI.GetInstanceByID(ctx, instance.ProcessInstanceID)
 		if err != nil {
@@ -263,7 +263,7 @@ func (u *Urge) dealLine(ctx context.Context, callback models.DispatcherCallback)
 			// 说明此时流程结束了
 			dataMap := make(map[string]interface{})
 			dataMap["modifier_id"] = pkg.STDUserID(ctx)
-			dataMap["status"] = flow2.Agree
+			dataMap["status"] = res
 			err = u.instanceRepo.Update(u.db, instance.ID, dataMap)
 			if err != nil {
 				return err

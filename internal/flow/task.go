@@ -16,13 +16,16 @@ package flow
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/quanxiang-cloud/flow/internal/convert"
 	"github.com/quanxiang-cloud/flow/internal/models"
 	"github.com/quanxiang-cloud/flow/internal/models/mysql"
 	"github.com/quanxiang-cloud/flow/internal/server/options"
 	"github.com/quanxiang-cloud/flow/pkg"
 	"github.com/quanxiang-cloud/flow/pkg/client"
+	"github.com/quanxiang-cloud/flow/pkg/code"
 	"github.com/quanxiang-cloud/flow/pkg/config"
+	"github.com/quanxiang-cloud/flow/pkg/misc/error2"
 	"github.com/quanxiang-cloud/flow/pkg/misc/id2"
 	"github.com/quanxiang-cloud/flow/pkg/misc/logger"
 	"github.com/quanxiang-cloud/flow/pkg/misc/time2"
@@ -41,7 +44,7 @@ type Task interface {
 		taskDefKey string, formData map[string]interface{}) map[string]interface{}
 	FilterCanReadFormData(ctx context.Context, flowInstanceEntity *models.Instance, fieldPermissionObj interface{}, formData interface{}) map[string]interface{}
 	GetCurrentNodes(ctx context.Context, processInstanceID string) ([]models.NodeModel, error)
-	AutoReviewTask(ctx context.Context, flowEntity *models.Flow, flowInstanceEntity *models.Instance, task *client.ProcessTask, userID string, params map[string]interface{}) error
+	AutoReviewTask(ctx context.Context, flowEntity *models.Flow, flowInstanceEntity *models.Instance, task *client.ProcessTask, userID string, params map[string]interface{}) (string, error)
 	PermissionConvertWriteRead(permission int8) (bool, bool)
 	GetCurrentNodesInfo(ctx context.Context, processInstanceID string) ([]*client.ProcessTask, error)
 }
@@ -80,6 +83,9 @@ type task struct {
 	dispatcherAPI          client.Dispatcher
 	flowInstanceRepo       models.InstanceRepo
 	serverConf             *config.Configs
+	instanceVariablesRepo  models.InstanceVariablesRepo
+	instanceExecutionRepo  models.InstanceExecutionRepo
+	instanceRepo           models.InstanceRepo
 }
 
 // NewTask init
@@ -106,6 +112,9 @@ func NewTask(conf *config.Configs, opts ...options.Options) (Task, error) {
 		dispatcherAPI:          client.NewDispatcher(conf),
 		flowInstanceRepo:       mysql.NewInstanceRepo(),
 		messageCenterAPI:       client.NewMessageCenter(conf),
+		instanceVariablesRepo:  mysql.NewInstanceVariablesRepo(),
+		instanceExecutionRepo:  mysql.NewInstanceExecutionRepo(),
+		instanceRepo:           mysql.NewInstanceRepo(),
 	}
 
 	for _, opt := range opts {
@@ -364,7 +373,7 @@ func (t *task) TaskUrging(ctx context.Context, rule convert.TaskTimeRuleModel, n
 	return nil
 }
 
-func (t *task) AutoReviewTask(ctx context.Context, flowEntity *models.Flow, flowInstanceEntity *models.Instance, task *client.ProcessTask, userID string, params map[string]interface{}) error {
+func (t *task) AutoReviewTask(ctx context.Context, flowEntity *models.Flow, flowInstanceEntity *models.Instance, task *client.ProcessTask, userID string, params map[string]interface{}) (string, error) {
 	// 保存数据到表单接口
 
 	formData := t.FilterCanEditFormData(ctx, flowEntity, flowInstanceEntity, task.NodeDefKey, make(map[string]interface{}))
@@ -376,28 +385,196 @@ func (t *task) AutoReviewTask(ctx context.Context, flowEntity *models.Flow, flow
 		ctx = pkg.SetRequestID2(ctx, flowInstanceEntity.RequestID)
 		err := t.formAPI.UpdateData(ctx, flowInstanceEntity.AppID, flowInstanceEntity.FormID, flowInstanceEntity.FormInstanceID, saveFormDataReq, false)
 		if err != nil {
-			return err
+			return "", err
 		}
 	}
 
-	comments := map[string]interface{}{
-		"reviewResult": Agree,
-		"reviewRemark": "",
-	}
-
-	err := t.processAPI.CompleteTask(ctx, flowInstanceEntity.ProcessInstanceID, task.ID, t.flow.FormatFormValue(flowInstanceEntity, params), comments)
-	if err != nil {
-		return err
-	}
-
+	shapeModel, err := convert.GetShapeByTaskDefKey(flowEntity.BpmnText, task.NodeDefKey)
+	comments := make(map[string]interface{})
 	model := &models.HandleTaskModel{
 		HandleType: opAutoReview,
-		HandleDesc: "自动审批通过",
+		HandleDesc: "自动审批",
 	}
+	taskResp, err := t.processAPI.CheckActiveTask(ctx, flowInstanceEntity.ProcessInstanceID, task.ID, userID)
+	if err != nil {
+		return "", err
+	}
+	if taskResp == nil {
+		return "", error2.NewError(code.TaskCannotFind)
+		// return false, error2.NewErrorWithString(error2.Internal, "Can not find task ")
+	}
+	var res = ""
+	// Don't be surprised, just to fix the bug, I'm just fixing it
+	if basicConf, ok := shapeModel.Data.BusinessData["basicConfig"]; basicConf != nil && ok {
+		if bMap, ok2 := basicConf.(map[string]interface{}); ok2 {
+			if timeRule, ok3 := bMap["timeRule"]; timeRule != nil && ok3 {
+				if timeMap, ok4 := timeRule.(map[string]interface{}); timeMap != nil && ok4 {
+					if enabled, ok5 := timeMap["enabled"]; enabled != nil && ok5 {
+						if b, ok6 := enabled.(bool); ok6 {
+							if b {
+								if whenTimeout, ok7 := timeMap["whenTimeout"]; whenTimeout != nil && ok7 {
+									if whenMap, ok8 := whenTimeout.(map[string]interface{}); ok8 {
+										if whenMap["type"].(string) == "autoDealWith" {
+											if whenMap["value"].(string) == "pass" {
+												comments["reviewResult"] = Agree
+												res = Agree
+												model.HandleDesc = "自动审批通过"
+												model.HandleType = "AUTO_" + Agree
+											}
+											if whenMap["value"].(string) == "reject" {
+												comments["reviewResult"] = Refuse
+												res = Refuse
+												model.HandleDesc = "自动审批拒绝"
+												model.HandleType = "AUTO_" + Refuse
+											}
 
+											comments["reviewRemark"] = ""
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	fmt.Println("自动审核============", comments, "res+++++++", res)
+	if res == Refuse || res == Agree { // 拒绝或者同意
+		variables, err := t.instanceVariablesRepo.FindVariablesByProcessInstanceID(t.db, flowInstanceEntity.ProcessInstanceID)
+		if err != nil {
+			return "", err
+		}
+		var value = "True"
+		if res == Refuse {
+			value = "False"
+		}
+		for k := range variables {
+			if variables[k].Type == "SYSTEM" && variables[k].Name == "SYS_AUDIT_BOOL" {
+				err := t.instanceVariablesRepo.Update(t.db, variables[k].ID, map[string]interface{}{
+					"value": value,
+				})
+				if err != nil {
+					logger.Logger.Error("update instance Variables err ,", err)
+				}
+			}
+
+		}
+	}
+	if res == Refuse { // 拒绝
+		shapeModel, err := convert.GetShapeByTaskDefKey(flowEntity.BpmnText, taskResp.NodeDefKey)
+		if err != nil {
+			return "", err
+		}
+		branchTargetElementID := shapeModel.Data.NodeData.BranchTargetElementID // 合流节点id
+		if len(branchTargetElementID) == 0 {                                    // 不在分支中，则直接结束流程
+			err = t.processAPI.CompleteTask(ctx, flowInstanceEntity.ProcessInstanceID, taskResp.ID, t.flow.FormatFormValue(flowInstanceEntity, params), comments)
+			if err != nil {
+				return "", err
+			}
+			err = t.processAPI.AbendInstance(ctx, flowInstanceEntity.ProcessInstanceID)
+			if err != nil {
+				return "", err
+			}
+		} else { // 在分支中，需要判断合流设置的逻辑
+
+			_, err = t.BranchReject0(ctx, shapeModel, task, flowEntity, flowInstanceEntity.ProcessInstanceID)
+
+			if err != nil {
+				return "", err
+			}
+		}
+
+	} else {
+		err = t.processAPI.CompleteTask(ctx, flowInstanceEntity.ProcessInstanceID, taskResp.ID, t.flow.FormatFormValue(flowInstanceEntity, params), comments)
+		if err != nil {
+			return "", err
+		}
+	}
+	dataMap := make(map[string]interface{})
+	dataMap["status"] = res
+	err = t.instanceRepo.Update(t.db, flowInstanceEntity.ID, dataMap)
+	if err != nil {
+		return "", err
+	}
 	// 增加操作日志
 	model.AutoReviewUserID = userID
-	return t.operationRecord.AddOperationRecord(ctx, flowInstanceEntity, task, model)
+	return res, t.operationRecord.AddOperationRecord(ctx, flowInstanceEntity, taskResp, model)
+}
+
+func (t *task) BranchReject0(ctx context.Context, currentNode *convert.ShapeModel, task *client.ProcessTask,
+	flowEntity *models.Flow, processInstanceID string) (string, error) {
+
+	nextNodeDefKey, isProcessCompleted := convert.FindNextNode(currentNode, flowEntity.BpmnText)
+
+	// 获取当前任务的同级 executionIDs
+	gateWayExecutionReq := &client.GateWayExecutionReq{
+		TaskID: task.ID,
+	}
+	executionResp, _ := t.processAPI.GetExecution(ctx, gateWayExecutionReq)
+
+	// 判断合流节点的设置
+	branchTargetElementID := currentNode.Data.NodeData.BranchTargetElementID // 合流节点id
+	branchTargetElement, _ := convert.GetShapeByTaskDefKey(flowEntity.BpmnText, branchTargetElementID)
+
+	// true : 任一分支拒绝结束流程 false：所有分支拒绝结束流程
+	processBranchEndStrategy := convert.GetValueFromBusinessData(*branchTargetElement, "processBranchEndStrategy").(string) == "any"
+	gatewayExecutionIDs := make([]string, 0)
+	if processBranchEndStrategy {
+		gatewayExecutionIDs = append(executionResp.Executions, executionResp.CurrentExecutionID)
+	} else {
+		gatewayExecutionIDs = append(gatewayExecutionIDs, executionResp.CurrentExecutionID)
+		instanceExecutions, _ := t.instanceExecutionRepo.FindByExecutionIDs(t.db, executionResp.Executions)
+		flag := len(instanceExecutions) == len(executionResp.Executions)
+		if flag {
+			nextNodeDefKey = currentNode.Data.NodeData.BranchTargetElementID
+			nextNode, _ := convert.GetShapeByTaskDefKey(flowEntity.BpmnText, nextNodeDefKey)
+			nextNodeDefKey, isProcessCompleted = convert.FindNextNode(nextNode, flowEntity.BpmnText)
+		}
+
+	}
+
+	resp, err := t.processAPI.InclusiveExecution(ctx, client.ParentExecutionReq{
+		TaskID: task.ID,
+		DefKey: nextNodeDefKey,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	comments := map[string]interface{}{
+		"reviewResult": Refuse,
+		"reviewRemark": "",
+	}
+	commentsJSON, err := json.Marshal(comments)
+	if err != nil {
+		return "", err
+	}
+	commentsStr := string(commentsJSON)
+
+	req := &client.CompleteExecutionReq{
+		ExecutionID: gatewayExecutionIDs,
+		NextDefKey:  nextNodeDefKey,
+		TaskID:      task.ID,
+		UserID:      pkg.STDUserID(ctx),
+		Comments:    commentsStr,
+	}
+	_, err = t.processAPI.CompleteExecution(ctx, req)
+	if err != nil {
+		return "", err
+	}
+
+	if isProcessCompleted {
+		return Refuse, nil
+	}
+	// 记录分支的结果
+	instanceExecution := &models.InstanceExecution{
+		ProcessInstanceID: processInstanceID,
+		ExecutionID:       resp.ExecutionID, // 如果是会签需要使用父级executionID
+		Result:            Refuse,
+	}
+	t.instanceExecutionRepo.Create(t.db, instanceExecution)
+	return "", nil
 }
 
 func (t *task) setTimeRule(ctx context.Context, flowInstanceEntity *models.Instance, task *client.ProcessTask, timeRule convert.TaskTimeRuleModel) error {

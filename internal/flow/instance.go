@@ -1814,17 +1814,11 @@ func (i *instance) ReviewTask(ctx context.Context, processInstanceID string, tas
 				dataMap["status"] = model.HandleType
 			}
 		} else {
-			// i.task.TaskCheck(ctx, entity, flowInstanceEntity, userID)
 			processInstance, err = i.processAPI.GetInstanceByID(ctx, processInstanceID)
 			if err != nil {
 				return false, err
 			}
 			if processInstance != nil && processInstance.Status != Active {
-				// 更新flow_instance_step
-				err = i.operationRecord.UpdateByNodeInstanceID(ctx, entity, task)
-				if err != nil {
-					return false, err
-				}
 				if opFillIn == model.HandleType {
 					dataMap["status"] = opAgree
 				} else {
